@@ -1,0 +1,161 @@
+const express = require('express');
+const router = express.Router();
+const { ObjectId } = require('mongodb');
+
+// POST /api/orders - Create new order(s) from cart
+router.post('/', async (req, res) => {
+    try {
+        const { userId, address, paymentMethod } = req.body;
+
+        if (!userId || !address) {
+            return res.status(400).json({ message: "User ID and address are required" });
+        }
+
+        // 1. Get User's Cart
+        const cart = await req.db.collection('carts').findOne({ userId });
+        if (!cart || !cart.items || cart.items.length === 0) {
+            return res.status(400).json({ message: "Cart is empty" });
+        }
+
+        // 2. Enrich items with details (price, vendorId) to ensure accuracy
+        const itemsWithDetails = [];
+        const vendorOrders = {}; // Map<vendorId, { items: [], total: 0 }>
+
+        for (const item of cart.items) {
+            const product = await req.db.collection('products').findOne({ _id: new ObjectId(item.productId) });
+            if (!product) continue; // Skip if product deleted
+
+            const lineItem = {
+                productId: item.productId,
+                name: product.name,
+                price: parseFloat(product.price),
+                quantity: item.quantity,
+                image: product.image,
+                unit: product.unit,
+                vendorId: product.vendorId // Assuming product has vendorId stored as ObjectId or string
+            };
+
+            const vId = product.vendorId.toString();
+
+            if (!vendorOrders[vId]) {
+                vendorOrders[vId] = {
+                    vendorId: product.vendorId, // Keep original type
+                    userId,
+                    items: [],
+                    totalAmount: 0,
+                    status: 'pending', // pending, preparing, ready, picked, completed, cancelled
+                    paymentMethod: paymentMethod || 'COD',
+                    address,
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                };
+            }
+
+            vendorOrders[vId].items.push(lineItem);
+            vendorOrders[vId].totalAmount += (lineItem.price * lineItem.quantity);
+        }
+
+        if (Object.keys(vendorOrders).length === 0) {
+            return res.status(400).json({ message: "No valid products found in cart" });
+        }
+
+        // 3. Create Orders
+        const createdOrders = [];
+        const orderCollection = req.db.collection('orders');
+
+        for (const vId in vendorOrders) {
+            const orderData = vendorOrders[vId];
+            // Format total to 2 decimals
+            orderData.totalAmount = parseFloat(orderData.totalAmount.toFixed(2));
+
+            const result = await orderCollection.insertOne(orderData);
+            createdOrders.push({ ...orderData, _id: result.insertedId });
+        }
+
+        // 4. Clear Cart
+        await req.db.collection('carts').updateOne(
+            { userId },
+            { $set: { items: [], updatedAt: new Date() } }
+        );
+
+        res.status(201).json({
+            message: "Order placed successfully",
+            orders: createdOrders
+        });
+
+    } catch (error) {
+        console.error("Create Order Error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+});
+
+// GET /api/orders?vendorId=...
+router.get('/', async (req, res) => {
+    try {
+        const { vendorId } = req.query;
+
+        if (!vendorId) {
+            return res.status(400).json({ message: "Vendor ID is required" });
+        }
+
+        const query = { vendorId: new ObjectId(vendorId) };
+
+        // Sort by newest first
+        const orders = await req.db.collection('orders')
+            .find(query)
+            .sort({ createdAt: -1 })
+            .toArray();
+
+        res.json(orders);
+    } catch (error) {
+        console.error("Get orders error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+});
+
+// GET /api/orders/recent?vendorId=...
+router.get('/recent', async (req, res) => {
+    try {
+        const { vendorId } = req.query;
+        if (!vendorId) {
+            return res.status(400).json({ message: "Vendor ID is required" });
+        }
+
+        const orders = await req.db.collection('orders')
+            .find({ vendorId: new ObjectId(vendorId) })
+            .sort({ createdAt: -1 })
+            .limit(5)
+            .toArray();
+
+        res.json(orders);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// PATCH /api/orders/:id/status
+router.patch('/:id/status', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+
+        if (!status) {
+            return res.status(400).json({ message: "Status is required" });
+        }
+
+        const result = await req.db.collection('orders').updateOne(
+            { _id: new ObjectId(id) },
+            { $set: { status: status, updatedAt: new Date() } }
+        );
+
+        if (result.matchedCount === 0) {
+            return res.status(404).json({ message: "Order not found" });
+        }
+
+        res.json({ message: "Order status updated", status });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
+module.exports = router;
