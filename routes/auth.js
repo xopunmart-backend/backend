@@ -9,7 +9,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'xopunmart_secret_key_123';
 // POST /api/auth/signup
 router.post('/signup', async (req, res) => {
     try {
-        const { name, email, password, phone, role } = req.body;
+        const { name, email, password, phone, role, shopCategory } = req.body;
 
         if (!name || !email || !password || !phone) {
             return res.status(400).json({ message: "All fields are required" });
@@ -25,7 +25,7 @@ router.post('/signup', async (req, res) => {
 
         const userRole = role || 'vendor'; // Default to vendor if not provided
 
-        const result = await req.db.collection('users').insertOne({
+        const newUser = {
             name,
             email,
             phone,
@@ -34,7 +34,13 @@ router.post('/signup', async (req, res) => {
             status: 'Pending', // Vendors/Riders might need approval
             createdAt: new Date(),
             updatedAt: new Date()
-        });
+        };
+
+        if (shopCategory) {
+            newUser.shopCategory = shopCategory;
+        }
+
+        const result = await req.db.collection('users').insertOne(newUser);
 
         const token = jwt.sign(
             { id: result.insertedId, email: email, role: userRole },
@@ -49,7 +55,8 @@ router.post('/signup', async (req, res) => {
                 email,
                 name,
                 role: userRole,
-                status: 'pending'
+                status: 'pending',
+                shopCategory: newUser.shopCategory
             }
         });
 
@@ -93,7 +100,10 @@ router.post('/login', async (req, res) => {
                 email: user.email,
                 name: user.name,
                 phone: user.phone, // Added phone
-                role: user.role
+                role: user.role,
+                shopCategory: user.shopCategory,
+                liveLocation: user.liveLocation,
+                shopLocation: user.shopLocation
             }
         });
 
@@ -124,7 +134,10 @@ router.get('/profile', async (req, res) => {
             email: user.email,
             phone: user.phone,
             role: user.role,
-            status: user.status
+            status: user.status,
+            shopCategory: user.shopCategory,
+            liveLocation: user.liveLocation,
+            shopLocation: user.shopLocation
         });
     } catch (error) {
         console.error("Profile fetch error:", error);

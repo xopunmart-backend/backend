@@ -55,6 +55,16 @@ router.post('/', async (req, res) => {
         // Convert vendorId to ObjectId
         newProduct.vendorId = new ObjectId(newProduct.vendorId);
 
+        // Validate Shop Category if vendor has one
+        const vendor = await req.db.collection('users').findOne({ _id: newProduct.vendorId });
+        if (vendor && vendor.shopCategory) {
+            if (newProduct.category !== vendor.shopCategory) {
+                return res.status(400).json({
+                    message: `You can only add products to your registered category: ${vendor.shopCategory}`
+                });
+            }
+        }
+
         // Set defaults for new fields
         newProduct.sku = newProduct.sku || 'SKU-' + Date.now();
         // Allow stock to be null if explicitly sent as null (or missing -> 0)
