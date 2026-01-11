@@ -57,10 +57,12 @@ router.post('/', async (req, res) => {
 
         // Validate Shop Category if vendor has one
         const vendor = await req.db.collection('users').findOne({ _id: newProduct.vendorId });
-        if (vendor && vendor.shopCategory) {
-            if (newProduct.category !== vendor.shopCategory) {
+        if (vendor) {
+            const allowedCategories = vendor.shopCategories || (vendor.shopCategory ? [vendor.shopCategory] : []);
+
+            if (allowedCategories.length > 0 && !allowedCategories.includes(newProduct.category)) {
                 return res.status(400).json({
-                    message: `You can only add products to your registered category: ${vendor.shopCategory}`
+                    message: `You can only add products to your registered categories: ${allowedCategories.join(', ')}`
                 });
             }
         }

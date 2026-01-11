@@ -54,6 +54,7 @@ app.use('/api/riders', require('./routes/riders'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/cart', require('./routes/cart'));
 app.use('/api/upload', require('./routes/upload'));
+app.use('/api/settings', require('./routes/settings'));
 
 app.get('/', (req, res) => {
     res.send('Backend Server is running');
