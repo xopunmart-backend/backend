@@ -111,9 +111,9 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ message: "Invalid email or password" });
         }
 
-        if (user.status === 'Pending') {
-            return res.status(403).json({ message: "Your account is pending approval from admin." });
-        }
+        // if (user.status === 'Pending') {
+        //     return res.status(403).json({ message: "Your account is pending approval from admin." });
+        // }
 
         if (user.status === 'Blocked' || user.status === 'Rejected') {
             return res.status(403).json({ message: "Your account has been blocked or rejected." });
@@ -198,6 +198,48 @@ router.get('/status', async (req, res) => {
     } catch (error) {
         console.error("Status check error:", error);
         res.status(500).json({ message: "Server error" });
+    }
+});
+
+// PUT /api/auth/profile
+router.put('/profile', async (req, res) => {
+    try {
+        const token = req.headers.authorization?.split(' ')[1];
+        if (!token) {
+            return res.status(401).json({ message: "No token provided" });
+        }
+
+        const decoded = jwt.verify(token, JWT_SECRET);
+        const { name, phone, shopImage, shopCategories, shopCategory } = req.body;
+
+        const updates = { updatedAt: new Date() };
+        if (name) updates.name = name;
+        if (phone) updates.phone = phone;
+        if (shopImage) updates.shopImage = shopImage;
+        if (shopCategories) {
+            updates.shopCategories = shopCategories;
+            if (shopCategories.length > 0) {
+                updates.shopCategory = shopCategories[0];
+            }
+        } else if (shopCategory) {
+            updates.shopCategory = shopCategory;
+            updates.shopCategories = [shopCategory];
+        }
+
+        const result = await req.db.collection('users').updateOne(
+            { _id: new ObjectId(decoded.id) },
+            { $set: updates }
+        );
+
+        if (result.matchedCount === 0) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        res.json({ success: true, message: "Profile updated successfully" });
+
+    } catch (error) {
+        console.error("Profile update error:", error);
+        res.status(401).json({ message: "Invalid token or server error" });
     }
 });
 

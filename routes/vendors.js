@@ -22,8 +22,12 @@ router.get('/:id', async (req, res) => {
         if (!ObjectId.isValid(id)) {
             return res.status(400).json({ message: "Invalid Vendor ID" });
         }
+
+        const vId = new ObjectId(id);
+
+        // 1. Fetch Vendor Details
         const vendor = await req.db.collection('users').findOne(
-            { _id: new ObjectId(id), role: 'vendor' },
+            { _id: vId, role: 'vendor' },
             { projection: { password: 0 } }
         );
 
@@ -31,7 +35,52 @@ router.get('/:id', async (req, res) => {
             return res.status(404).json({ message: "Vendor not found" });
         }
 
-        res.json(vendor);
+        // 2. Fetch Order Stats
+        const orderStats = await req.db.collection('orders').aggregate([
+            { $match: { vendorId: vId } },
+            {
+                $group: {
+                    _id: null,
+                    totalSales: {
+                        $sum: {
+                            $cond: [{ $ne: ["$status", "cancelled"] }, "$totalAmount", 0]
+                        }
+                    },
+                    totalOrders: { $sum: 1 },
+                    pendingOrders: {
+                        $sum: {
+                            $cond: [{ $eq: ["$status", "pending"] }, 1, 0]
+                        }
+                    },
+                    completedOrders: {
+                        $sum: {
+                            $cond: [{ $eq: ["$status", "delivered"] }, 1, 0]
+                        }
+                    }
+                }
+            }
+        ]).toArray();
+
+        const stats = orderStats.length > 0 ? orderStats[0] : { totalSales: 0, totalOrders: 0, pendingOrders: 0, completedOrders: 0 };
+
+        // 3. Fetch Recent Products
+        const products = await req.db.collection('products')
+            .find({ vendorId: vId })
+            .sort({ createdAt: -1 })
+            .limit(10)
+            .toArray();
+
+        // 4. Combine Data
+        const responseData = {
+            ...vendor,
+            totalSales: stats.totalSales,
+            totalOrders: stats.totalOrders,
+            pendingOrders: stats.pendingOrders,
+            completedOrders: stats.completedOrders,
+            products: products
+        };
+
+        res.json(responseData);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
