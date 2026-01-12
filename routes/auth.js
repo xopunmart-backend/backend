@@ -176,7 +176,9 @@ router.get('/profile', async (req, res) => {
             liveLocation: user.liveLocation,
             shopLocation: user.shopLocation,
             shopImage: user.shopImage,
-            isOnline: user.isOnline
+            shopImage: user.shopImage,
+            isOnline: user.isOnline,
+            bankDetails: user.bankDetails || {}
         });
     } catch (error) {
         console.error("Profile fetch error:", error);
@@ -233,6 +235,10 @@ router.put('/profile', async (req, res) => {
         } else if (shopCategory) {
             updates.shopCategory = shopCategory;
             updates.shopCategories = [shopCategory];
+        }
+
+        if (req.body.bankDetails) {
+            updates.bankDetails = req.body.bankDetails;
         }
 
         console.log("Applying updates:", updates); // DEBUG LOG
