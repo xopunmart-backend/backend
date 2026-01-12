@@ -32,6 +32,7 @@ router.post('/signup', async (req, res) => {
             password: hashedPassword,
             role: userRole,
             status: 'Pending', // Vendors/Riders might need approval
+            isOnline: false, // Default to offline
             createdAt: new Date(),
             updatedAt: new Date()
         };
@@ -137,7 +138,8 @@ router.post('/login', async (req, res) => {
                 shopCategories: user.shopCategories || [],
                 liveLocation: user.liveLocation,
                 shopLocation: user.shopLocation,
-                shopImage: user.shopImage
+                shopImage: user.shopImage,
+                isOnline: user.isOnline
             }
         });
 
@@ -173,7 +175,8 @@ router.get('/profile', async (req, res) => {
             shopCategories: user.shopCategories || [],
             liveLocation: user.liveLocation,
             shopLocation: user.shopLocation,
-            shopImage: user.shopImage
+            shopImage: user.shopImage,
+            isOnline: user.isOnline
         });
     } catch (error) {
         console.error("Profile fetch error:", error);
@@ -216,6 +219,7 @@ router.put('/profile', async (req, res) => {
         if (name) updates.name = name;
         if (phone) updates.phone = phone;
         if (shopImage) updates.shopImage = shopImage;
+        if (req.body.isOnline !== undefined) updates.isOnline = req.body.isOnline;
         if (shopCategories) {
             updates.shopCategories = shopCategories;
             if (shopCategories.length > 0) {
