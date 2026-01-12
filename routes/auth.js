@@ -215,11 +215,16 @@ router.put('/profile', async (req, res) => {
         const decoded = jwt.verify(token, JWT_SECRET);
         const { name, phone, shopImage, shopCategories, shopCategory } = req.body;
 
+        console.log("PUT /profile body:", req.body); // DEBUG LOG
+
         const updates = { updatedAt: new Date() };
         if (name) updates.name = name;
         if (phone) updates.phone = phone;
         if (shopImage) updates.shopImage = shopImage;
-        if (req.body.isOnline !== undefined) updates.isOnline = req.body.isOnline;
+        if (req.body.isOnline !== undefined) {
+            updates.isOnline = req.body.isOnline;
+            console.log("Updating isOnline to:", updates.isOnline); // DEBUG LOG
+        }
         if (shopCategories) {
             updates.shopCategories = shopCategories;
             if (shopCategories.length > 0) {
@@ -230,10 +235,14 @@ router.put('/profile', async (req, res) => {
             updates.shopCategories = [shopCategory];
         }
 
+        console.log("Applying updates:", updates); // DEBUG LOG
+
         const result = await req.db.collection('users').updateOne(
             { _id: new ObjectId(decoded.id) },
             { $set: updates }
         );
+
+        console.log("Update result:", result.matchedCount, result.modifiedCount); // DEBUG LOG
 
         if (result.matchedCount === 0) {
             return res.status(404).json({ message: "User not found" });
