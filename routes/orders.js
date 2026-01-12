@@ -70,6 +70,21 @@ router.post('/', async (req, res) => {
 
             const result = await orderCollection.insertOne(orderData);
             createdOrders.push({ ...orderData, _id: result.insertedId });
+
+            // Create Notification for Vendor
+            try {
+                await req.db.collection('notifications').insertOne({
+                    userId: new ObjectId(vId),
+                    title: 'New Order Received',
+                    message: `You have received a new order of ₹${orderData.totalAmount}`,
+                    type: 'order',
+                    isRead: false,
+                    createdAt: new Date()
+                });
+            } catch (notifError) {
+                console.error("Failed to create notification:", notifError);
+                // Don't fail the order if notification fails
+            }
         }
 
         // 4. Clear Cart
