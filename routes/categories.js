@@ -1,8 +1,9 @@
 const express = require('express');
 const { ObjectId } = require('mongodb');
 const router = express.Router();
+const { authenticateToken, authorizeAdmin } = require('../middleware/auth');
 
-// GET all categories
+// GET all categories (Public)
 router.get('/', async (req, res) => {
     try {
         const categories = await req.db.collection('categories').find({}).toArray();
@@ -12,8 +13,8 @@ router.get('/', async (req, res) => {
     }
 });
 
-// POST new category
-router.post('/', async (req, res) => {
+// POST new category (Admin Only)
+router.post('/', authenticateToken, authorizeAdmin, async (req, res) => {
     try {
         const newCategory = req.body;
         if (!newCategory.name) {
@@ -34,8 +35,8 @@ router.post('/', async (req, res) => {
     }
 });
 
-// PUT update category
-router.put('/:id', async (req, res) => {
+// PUT update category (Admin Only)
+router.put('/:id', authenticateToken, authorizeAdmin, async (req, res) => {
     try {
         const { id } = req.params;
         const updates = req.body;
@@ -57,8 +58,8 @@ router.put('/:id', async (req, res) => {
     }
 });
 
-// PATCH reorder categories
-router.patch('/reorder', async (req, res) => {
+// PATCH reorder categories (Admin Only)
+router.patch('/reorder', authenticateToken, authorizeAdmin, async (req, res) => {
     try {
         const { categories } = req.body;
         if (!Array.isArray(categories)) {
@@ -80,8 +81,8 @@ router.patch('/reorder', async (req, res) => {
     }
 });
 
-// DELETE category
-router.delete('/:id', async (req, res) => {
+// DELETE category (Admin Only)
+router.delete('/:id', authenticateToken, authorizeAdmin, async (req, res) => {
     try {
         const { id } = req.params;
         const result = await req.db.collection('categories').deleteOne({ _id: new ObjectId(id) });
