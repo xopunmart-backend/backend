@@ -111,9 +111,35 @@ router.post('/withdraw', authenticateToken, async (req, res) => {
 router.get('/payment-methods', authenticateToken, async (req, res) => {
     try {
         const userId = new ObjectId(req.user.id);
+
+        // 1. Fetch saved methods from payment_methods collection
         const methods = await req.db.collection('payment_methods')
             .find({ userId: userId })
             .toArray();
+
+        // 2. Fetch User Profile Bank Details
+        const user = await req.db.collection('users').findOne(
+            { _id: userId },
+            { projection: { bankDetails: 1 } }
+        );
+
+        // 3. Append Profile Bank Details if available
+        if (user && user.bankDetails && user.bankDetails.accountNumber) {
+            // Check if profile bank details are somewhat complete
+            methods.unshift({
+                _id: 'profile_linked_bank', // Virtual ID
+                type: 'bank',
+                isProfile: true, // Flag to identify
+                details: {
+                    bankName: user.bankDetails.bankName,
+                    accountNo: user.bankDetails.accountNumber,
+                    ifsc: user.bankDetails.ifscCode,
+                    holderName: user.bankDetails.accountHolderName
+                },
+                alias: `${user.bankDetails.bankName || 'Bank'} (Profile Default)`
+            });
+        }
+
         res.json(methods);
     } catch (error) {
         console.error("Fetch payment methods error:", error);
