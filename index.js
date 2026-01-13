@@ -56,6 +56,7 @@ app.use('/api/cart', require('./routes/cart'));
 app.use('/api/upload', require('./routes/upload'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/wallet', require('./routes/wallet'));
 
 app.get('/', (req, res) => {
     res.send('Backend Server is running');
