@@ -199,24 +199,30 @@ router.patch('/:id/status', async (req, res) => {
         if (status === 'completed') {
             const order = await req.db.collection('orders').findOne({ _id: new ObjectId(id) });
             if (order && order.paymentMethod !== 'COD_UNPAID') {
-                // Note: Logic depends on how COD is handled. 
-                // Assuming 'completed' means vendor delivered and got cash (if COD) or it was prepaid.
-                // If it's pure platform commission model, we might need more complex logic.
-                // For now, simply credit the total amount to the vendor's wallet.
+                // Platform Commission Logic (10%)
+                const commissionRate = 0.10;
+                const commissionAmount = order.totalAmount * commissionRate;
+                const netAmount = order.totalAmount - commissionAmount;
 
                 await req.db.collection('users').updateOne(
-                    { _id: order.vendorId }, // stored as ObjectId
-                    { $inc: { walletBalance: order.totalAmount } }
+                    { _id: order.vendorId },
+                    { $inc: { walletBalance: netAmount } }
                 );
 
                 await req.db.collection('transactions').insertOne({
                     userId: order.vendorId,
                     type: 'credit',
-                    amount: order.totalAmount,
-                    description: `Order Payment #${id.substring(id.length - 6)}`,
+                    amount: netAmount,
+                    commission: commissionAmount,
+                    description: `Order Payment #${id.substring(id.length - 6)} (Net)`,
                     orderId: new ObjectId(id),
                     createdAt: new Date()
                 });
+
+                await req.db.collection('orders').updateOne(
+                    { _id: new ObjectId(id) },
+                    { $set: { platformCommission: commissionAmount, netVendorEarnings: netAmount } }
+                );
             }
         }
         // END: Credit Wallet
