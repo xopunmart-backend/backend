@@ -262,4 +262,31 @@ router.put('/profile', async (req, res) => {
     }
 });
 
+// POST /api/auth/fcm-token
+router.post('/fcm-token', async (req, res) => {
+    try {
+        const tokenHeader = req.headers.authorization?.split(' ')[1];
+        if (!tokenHeader) {
+            return res.status(401).json({ message: "No token provided" });
+        }
+
+        const decoded = jwt.verify(tokenHeader, JWT_SECRET);
+        const { fcmToken } = req.body;
+
+        if (!fcmToken) {
+            return res.status(400).json({ message: "FCM token is required" });
+        }
+
+        await req.db.collection('users').updateOne(
+            { _id: new ObjectId(decoded.id) },
+            { $set: { fcmToken: fcmToken, updatedAt: new Date() } }
+        );
+
+        res.json({ success: true, message: "FCM token updated" });
+    } catch (error) {
+        console.error("FCM Token update error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+});
+
 module.exports = router;

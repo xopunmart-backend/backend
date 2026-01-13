@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { ObjectId } = require('mongodb');
+const admin = require('../firebase');
 
 // POST /api/orders - Create new order(s) from cart
 router.post('/', async (req, res) => {
@@ -73,14 +74,41 @@ router.post('/', async (req, res) => {
 
             // Create Notification for Vendor
             try {
-                await req.db.collection('notifications').insertOne({
+                const notificationData = {
                     userId: new ObjectId(vId),
                     title: 'New Order Received',
                     message: `You have received a new order of ₹${orderData.totalAmount}`,
                     type: 'order',
                     isRead: false,
                     createdAt: new Date()
-                });
+                };
+
+                await req.db.collection('notifications').insertOne(notificationData);
+
+                // START: Send Push Notification
+                const vendorUser = await req.db.collection('users').findOne({ _id: new ObjectId(vId) });
+                if (vendorUser && vendorUser.fcmToken) {
+                    const messagePayload = {
+                        notification: {
+                            title: notificationData.title,
+                            body: notificationData.message
+                        },
+                        data: {
+                            type: 'order',
+                            orderId: result.insertedId.toString()
+                        },
+                        token: vendorUser.fcmToken
+                    };
+
+                    try {
+                        await admin.messaging().send(messagePayload);
+                        console.log(`Push notification sent to vendor ${vId}`);
+                    } catch (fcmError) {
+                        console.error(`Error sending push to vendor ${vId}:`, fcmError);
+                    }
+                }
+                // END: Send Push Notification
+
             } catch (notifError) {
                 console.error("Failed to create notification:", notifError);
                 // Don't fail the order if notification fails
