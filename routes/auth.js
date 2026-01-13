@@ -175,8 +175,9 @@ router.get('/profile', async (req, res) => {
             shopCategories: user.shopCategories || [],
             liveLocation: user.liveLocation,
             shopLocation: user.shopLocation,
+            shopLocation: user.shopLocation,
             shopImage: user.shopImage,
-            shopImage: user.shopImage,
+            profileImage: user.profileImage, // Added profileImage
             isOnline: user.isOnline,
             bankDetails: user.bankDetails || {}
         });
@@ -223,6 +224,7 @@ router.put('/profile', async (req, res) => {
         if (name) updates.name = name;
         if (phone) updates.phone = phone;
         if (shopImage) updates.shopImage = shopImage;
+        if (req.body.profileImage) updates.profileImage = req.body.profileImage;
         if (req.body.isOnline !== undefined) {
             updates.isOnline = req.body.isOnline;
             console.log("Updating isOnline to:", updates.isOnline); // DEBUG LOG
