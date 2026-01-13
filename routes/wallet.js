@@ -106,4 +106,70 @@ router.post('/withdraw', authenticateToken, async (req, res) => {
     }
 });
 
+// GET /api/wallet/payment-methods
+// Get saved payment methods
+router.get('/payment-methods', authenticateToken, async (req, res) => {
+    try {
+        const userId = new ObjectId(req.user.id);
+        const methods = await req.db.collection('payment_methods')
+            .find({ userId: userId })
+            .toArray();
+        res.json(methods);
+    } catch (error) {
+        console.error("Fetch payment methods error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+});
+
+// POST /api/wallet/payment-methods
+// Add a new payment method
+router.post('/payment-methods', authenticateToken, async (req, res) => {
+    try {
+        const userId = new ObjectId(req.user.id);
+        const { type, details, alias } = req.body; // type: 'bank' | 'upi'
+
+        if (!['bank', 'upi'].includes(type) || !details) {
+            return res.status(400).json({ message: "Invalid data" });
+        }
+
+        const newMethod = {
+            userId,
+            type,
+            details, // Bank: { accountNo, ifsc, bankName, holderName } | UPI: { vpa }
+            alias: alias || (type === 'bank' ? details.bankName : 'UPI ID'),
+            createdAt: new Date()
+        };
+
+        const result = await req.db.collection('payment_methods').insertOne(newMethod);
+        newMethod._id = result.insertedId;
+
+        res.json(newMethod);
+    } catch (error) {
+        console.error("Add payment method error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+});
+
+// DELETE /api/wallet/payment-methods/:id
+router.delete('/payment-methods/:id', authenticateToken, async (req, res) => {
+    try {
+        const userId = new ObjectId(req.user.id);
+        const methodId = new ObjectId(req.params.id);
+
+        const result = await req.db.collection('payment_methods').deleteOne({
+            _id: methodId,
+            userId: userId
+        });
+
+        if (result.deletedCount === 0) {
+            return res.status(404).json({ message: "Not found" });
+        }
+
+        res.json({ message: "Deleted successfully" });
+    } catch (error) {
+        console.error("Delete payment method error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+});
+
 module.exports = router;
