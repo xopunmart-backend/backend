@@ -138,11 +138,10 @@ router.get('/', async (req, res) => {
     try {
         const { vendorId } = req.query;
 
-        if (!vendorId) {
-            return res.status(400).json({ message: "Vendor ID is required" });
+        const query = {};
+        if (vendorId) {
+            query.vendorId = new ObjectId(vendorId);
         }
-
-        const query = { vendorId: new ObjectId(vendorId) };
 
         // Sort by newest first
         const orders = await req.db.collection('orders')
