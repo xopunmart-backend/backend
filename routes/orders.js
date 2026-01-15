@@ -144,10 +144,38 @@ router.get('/', async (req, res) => {
         }
 
         // Sort by newest first
-        const orders = await req.db.collection('orders')
-            .find(query)
-            .sort({ createdAt: -1 })
-            .toArray();
+        // Sort by newest first
+        const pipeline = [
+            { $match: query },
+            { $sort: { createdAt: -1 } },
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: 'userId',
+                    foreignField: '_id',
+                    as: 'customer'
+                }
+            },
+            {
+                $unwind: {
+                    path: '$customer',
+                    preserveNullAndEmptyArrays: true
+                }
+            },
+            {
+                $addFields: {
+                    customerName: '$customer.name',
+                    customerImage: '$customer.profileImage'
+                }
+            },
+            {
+                $project: {
+                    customer: 0 // Remove the full customer object to save bandwidth
+                }
+            }
+        ];
+
+        const orders = await req.db.collection('orders').aggregate(pipeline).toArray();
 
         res.json(orders);
     } catch (error) {
