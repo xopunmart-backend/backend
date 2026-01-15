@@ -17,7 +17,27 @@ router.get('/', async (req, res) => {
             // Ideally should be consistent.
         }
 
-        const products = await req.db.collection('products').find(query).toArray();
+        const products = await req.db.collection('products').aggregate([
+            { $match: query },
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: 'vendorId',
+                    foreignField: '_id',
+                    as: 'vendor'
+                }
+            },
+            {
+                $addFields: {
+                    vendorName: { $arrayElemAt: ['$vendor.name', 0] }
+                }
+            },
+            {
+                $project: {
+                    vendor: 0
+                }
+            }
+        ]).toArray();
         res.json(products);
     } catch (error) {
         res.status(500).json({ message: error.message });
