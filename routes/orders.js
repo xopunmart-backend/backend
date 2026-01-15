@@ -6,7 +6,7 @@ const admin = require('../firebase');
 // POST /api/orders - Create new order(s) from cart
 router.post('/', async (req, res) => {
     try {
-        const { userId, address, paymentMethod } = req.body;
+        const { userId, address, paymentMethod, location } = req.body;
 
         if (!userId || !address) {
             return res.status(400).json({ message: "User ID and address are required" });
@@ -47,6 +47,7 @@ router.post('/', async (req, res) => {
                     status: 'pending', // pending, preparing, ready, picked, completed, cancelled
                     paymentMethod: paymentMethod || 'COD',
                     address,
+                    location, // Save lat/lng coordinates
                     createdAt: new Date(),
                     updatedAt: new Date()
                 };
