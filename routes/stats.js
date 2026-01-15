@@ -282,6 +282,13 @@ router.get('/dashboard', async (req, res) => {
         // Pending Payouts (Mock logic based on wallet balance > 500)
         const pendingPayoutVendors = await db.collection('users').countDocuments({ role: 'vendor', walletBalance: { $gt: 500 } });
 
+        const vendorStats = {
+            totalVendors: totalVendorsCount,
+            activeVendors: activeVendorsReal,
+            pendingPayoutVendors,
+            topVendors
+        };
+
         // 13. Geo-tagged Activities
         const geoActivities = [];
 
