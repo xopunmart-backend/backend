@@ -29,11 +29,9 @@ router.get('/dashboard', async (req, res) => {
 
         const onlineRiders = await db.collection('users').countDocuments({ role: 'rider', status: 'online' }); // Online Riders
 
-        // Total Revenue
-        // Sum of 'total' field in 'orders' collection.
-        // Assuming 'total' is a number. If it's a string, this aggregation might need parsing, 
-        // but robust design suggests storing money as numbers/decimals.
+        // Total Revenue (All time, excluding cancelled)
         const revenueResult = await db.collection('orders').aggregate([
+            { $match: { status: { $ne: 'cancelled' } } },
             {
                 $group: {
                     _id: null,
@@ -41,8 +39,43 @@ router.get('/dashboard', async (req, res) => {
                 }
             }
         ]).toArray();
-
         const totalRevenue = revenueResult.length > 0 ? revenueResult[0].totalRevenue : 0;
+
+        // Revenue Trend (This Month vs Last Month)
+        const now = new Date();
+        const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+
+        const thisMonthRevenueResult = await db.collection('orders').aggregate([
+            {
+                $match: {
+                    status: { $ne: 'cancelled' },
+                    createdAt: { $gte: startOfThisMonth }
+                }
+            },
+            { $group: { _id: null, total: { $sum: "$totalAmount" } } }
+        ]).toArray();
+        const thisMonthRevenue = thisMonthRevenueResult.length > 0 ? thisMonthRevenueResult[0].total : 0;
+
+        const lastMonthRevenueResult = await db.collection('orders').aggregate([
+            {
+                $match: {
+                    status: { $ne: 'cancelled' },
+                    createdAt: { $gte: startOfLastMonth, $lte: endOfLastMonth }
+                }
+            },
+            { $group: { _id: null, total: { $sum: "$totalAmount" } } }
+        ]).toArray();
+        const lastMonthRevenue = lastMonthRevenueResult.length > 0 ? lastMonthRevenueResult[0].total : 0;
+
+        // Calculate Trend percentage
+        let revenueTrend = 0;
+        if (lastMonthRevenue === 0) {
+            revenueTrend = thisMonthRevenue > 0 ? 100 : 0;
+        } else {
+            revenueTrend = ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100;
+        }
 
 
         // 4. Recent Activity
@@ -348,6 +381,7 @@ router.get('/dashboard', async (req, res) => {
 
         res.json({
             totalRevenue,
+            totalRevenueTrend: revenueTrend, // Add this
             activeVendors,
             activeCustomers,
             pendingOrders,
