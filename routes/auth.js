@@ -216,19 +216,34 @@ router.put('/profile', async (req, res) => {
         }
 
         const decoded = jwt.verify(token, JWT_SECRET);
-        const { name, phone, shopImage, shopCategories, shopCategory } = req.body;
-
-        console.log("PUT /profile body:", req.body); // DEBUG LOG
+        const { name, phone, email, password, shopImage, shopCategories, shopCategory } = req.body;
+        const userId = new ObjectId(decoded.id);
 
         const updates = { updatedAt: new Date() };
         if (name) updates.name = name;
         if (phone) updates.phone = phone;
         if (shopImage) updates.shopImage = shopImage;
         if (req.body.profileImage) updates.profileImage = req.body.profileImage;
+
+        // Email update with uniqueness check
+        if (email) {
+            const existingUser = await req.db.collection('users').findOne({ email: email });
+            if (existingUser && existingUser._id.toString() !== userId.toString()) {
+                return res.status(400).json({ message: "Email is already in use by another account" });
+            }
+            updates.email = email;
+        }
+
+        // Password update with hashing
+        if (password) {
+            const salt = await bcrypt.genSalt(10);
+            updates.password = await bcrypt.hash(password, salt);
+        }
+
         if (req.body.isOnline !== undefined) {
             updates.isOnline = req.body.isOnline;
-            console.log("Updating isOnline to:", updates.isOnline); // DEBUG LOG
         }
+
         if (shopCategories) {
             updates.shopCategories = shopCategories;
             if (shopCategories.length > 0) {
@@ -243,14 +258,10 @@ router.put('/profile', async (req, res) => {
             updates.bankDetails = req.body.bankDetails;
         }
 
-        console.log("Applying updates:", updates); // DEBUG LOG
-
         const result = await req.db.collection('users').updateOne(
-            { _id: new ObjectId(decoded.id) },
+            { _id: userId },
             { $set: updates }
         );
-
-        console.log("Update result:", result.matchedCount, result.modifiedCount); // DEBUG LOG
 
         if (result.matchedCount === 0) {
             return res.status(404).json({ message: "User not found" });
