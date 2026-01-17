@@ -179,6 +179,7 @@ router.get('/profile', async (req, res) => {
             shopImage: user.shopImage,
             profileImage: user.profileImage, // Added profileImage
             isOnline: user.isOnline,
+            savedAddresses: user.savedAddresses || [],
             bankDetails: user.bankDetails || {}
         });
     } catch (error) {
@@ -256,6 +257,10 @@ router.put('/profile', async (req, res) => {
 
         if (req.body.bankDetails) {
             updates.bankDetails = req.body.bankDetails;
+        }
+
+        if (req.body.savedAddresses) {
+            updates.savedAddresses = req.body.savedAddresses;
         }
 
         const result = await req.db.collection('users').updateOne(
