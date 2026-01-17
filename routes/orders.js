@@ -184,6 +184,23 @@ router.get('/', async (req, res) => {
     }
 });
 
+// GET /api/orders/user/:userId
+router.get('/user/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+
+        const orders = await req.db.collection('orders')
+            .find({ userId: userId }) // userId is stored as string in create order
+            .sort({ createdAt: -1 })
+            .toArray();
+
+        res.json(orders);
+    } catch (error) {
+        console.error("Get user orders error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+});
+
 // GET /api/orders/recent?vendorId=...
 router.get('/recent', async (req, res) => {
     try {
