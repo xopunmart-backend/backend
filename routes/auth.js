@@ -260,7 +260,7 @@ router.put('/profile', async (req, res) => {
 
     } catch (error) {
         console.error("Profile update error:", error);
-        res.status(401).json({ message: "Invalid token or server error" });
+        res.status(401).json({ message: error.message || "Invalid token or server error", error: error.toString() });
     }
 });
 
