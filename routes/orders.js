@@ -201,6 +201,23 @@ router.get('/user/:userId', async (req, res) => {
     }
 });
 
+// GET /api/orders/:id
+router.get('/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const order = await req.db.collection('orders').findOne({ _id: new ObjectId(id) });
+
+        if (!order) {
+            return res.status(404).json({ message: "Order not found" });
+        }
+
+        res.json(order);
+    } catch (error) {
+        console.error("Get order error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+});
+
 // GET /api/orders/recent?vendorId=...
 router.get('/recent', async (req, res) => {
     try {
