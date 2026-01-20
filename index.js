@@ -63,7 +63,7 @@ app.get('/', (req, res) => {
     res.send('Backend Server is running');
 });
 
-app.listen(port, () => {
+app.listen(port, '0.0.0.0', () => {
     console.log(`Server running on port ${port}`);
 
     // Auto-Offline Job
