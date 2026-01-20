@@ -60,30 +60,26 @@ router.post('/signup', async (req, res) => {
 
         const result = await req.db.collection('users').insertOne(newUser);
 
-        if (userRole === 'customer') {
-            const token = jwt.sign(
-                { id: result.insertedId, email: email, role: userRole },
-                JWT_SECRET,
-                { expiresIn: '365d' }
-            );
+        // Generate token for ALL users (Customer, Rider, Vendor)
+        const token = jwt.sign(
+            { id: result.insertedId, email: email, role: userRole },
+            JWT_SECRET,
+            { expiresIn: '365d' }
+        );
 
-            res.status(201).json({
-                token,
-                user: {
-                    id: result.insertedId,
-                    email,
-                    name,
-                    role: userRole,
-                    status: 'Active',
-                }
-            });
-        } else {
-            // For Vendors and Riders, require approval
-            res.status(201).json({
-                success: true,
-                message: "Registration successful. Please wait for admin approval."
-            });
-        }
+        res.status(201).json({
+            token,
+            user: {
+                id: result.insertedId,
+                email,
+                name,
+                role: userRole,
+                status: userRole === 'customer' ? 'Active' : 'Pending', // Explicitly set status
+            },
+            message: userRole === 'customer'
+                ? "Registration successful"
+                : "Registration successful. Please wait for admin approval."
+        });
 
     } catch (error) {
         console.error("Signup error:", error);
