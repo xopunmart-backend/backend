@@ -295,4 +295,110 @@ router.patch('/:id/status', async (req, res) => {
     }
 });
 
+// GET /api/orders/available - Get orders ready for pickup
+router.get('/available', async (req, res) => {
+    try {
+        // Find orders that are 'ready' (vendor prepared them) and have NO rider assigned yet
+        // For now, let's also include 'preparing' if you want riders to see them early, 
+        // but 'ready' is safer. Let's assume 'ready' for pickup.
+        // Also ensure riderId is null or missing.
+
+        const query = {
+            status: { $in: ['ready', 'preparing'] }, // Show preparing too so they can queue up? Let's stick to 'ready' for MVP or both? Let's do both for visibility.
+            riderId: { $exists: false } // No rider assigned
+        };
+
+        const orders = await req.db.collection('orders').find(query).sort({ createdAt: -1 }).toArray();
+
+        // Enrich with vendor details (store name, address)
+        // We can use aggregation for better performance, but loop is fine for MVP volume.
+        // Actually, let's use aggregation like above for efficiency.
+
+        const pipeline = [
+            {
+                $match: {
+                    status: { $in: ['ready', 'preparing'] },
+                    riderId: { $in: [null, undefined] } // Handle both null and undefined
+                }
+            },
+            { $sort: { createdAt: -1 } },
+            // Lookup Vendor details
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: 'vendorId',
+                    foreignField: '_id',
+                    as: 'vendor'
+                }
+            },
+            {
+                $unwind: { path: '$vendor', preserveNullAndEmptyArrays: true }
+            },
+            {
+                $addFields: {
+                    vendorName: '$vendor.name', // or storeName if you have it
+                    vendorAddress: '$vendor.address', // Assuming vendor has address in profile
+                    vendorLocation: '$vendor.liveLocation' // For map distance
+                }
+            },
+            {
+                $project: {
+                    vendor: 0 // Remove full object
+                }
+            }
+        ];
+
+        const richOrders = await req.db.collection('orders').aggregate(pipeline).toArray();
+
+        res.json(richOrders);
+    } catch (error) {
+        console.error("Get available orders error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+});
+
+// PATCH /api/orders/:id/accept - Rider accepts an order
+router.patch('/:id/accept', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { riderId } = req.body;
+
+        if (!riderId) {
+            return res.status(400).json({ message: "Rider ID is required" });
+        }
+
+        const order = await req.db.collection('orders').findOne({ _id: new ObjectId(id) });
+        if (!order) {
+            return res.status(404).json({ message: "Order not found" });
+        }
+
+        if (order.riderId) {
+            return res.status(400).json({ message: "Order already accepted by another rider" });
+        }
+
+        // Update Order
+        await req.db.collection('orders').updateOne(
+            { _id: new ObjectId(id) },
+            {
+                $set: {
+                    riderId: new ObjectId(riderId),
+                    status: 'picked_up', // Or just 'accepted'? Usually 'accepted_by_rider' then 'picked_up'.
+                    // Let's use 'accepted' for now.
+                    status: 'accepted',
+                    updatedAt: new Date(),
+                    riderAcceptedAt: new Date()
+                }
+            }
+        );
+
+        // Notify Vendor
+        // TODO: Add notification logic here
+
+        res.json({ success: true, message: "Order accepted" });
+    } catch (error) {
+        console.error("Accept order error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+});
+
 module.exports = router;
