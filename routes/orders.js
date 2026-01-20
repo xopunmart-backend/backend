@@ -304,7 +304,7 @@ router.get('/available', async (req, res) => {
         // Also ensure riderId is null or missing.
 
         const query = {
-            status: { $in: ['ready', 'preparing'] }, // Show preparing too so they can queue up? Let's stick to 'ready' for MVP or both? Let's do both for visibility.
+            status: { $in: ['pending', 'preparing', 'ready'] }, // Show pending too for immediate visibility
             riderId: { $exists: false } // No rider assigned
         };
 
