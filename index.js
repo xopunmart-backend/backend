@@ -65,4 +65,27 @@ app.get('/', (req, res) => {
 
 app.listen(port, () => {
     console.log(`Server running on port ${port}`);
+
+    // Auto-Offline Job
+    setInterval(async () => {
+        try {
+            const db = client.db('xopunmart');
+            const threshold = new Date(Date.now() - 2 * 60 * 1000); // 2 minutes ago
+
+            const result = await db.collection('users').updateMany(
+                {
+                    role: 'rider',
+                    isOnline: true,
+                    lastSeen: { $lt: threshold }
+                },
+                { $set: { isOnline: false } }
+            );
+
+            if (result.modifiedCount > 0) {
+                console.log(`Auto-offline: Marked ${result.modifiedCount} riders offline.`);
+            }
+        } catch (e) {
+            console.error("Auto-offline job error:", e);
+        }
+    }, 60 * 1000); // Run every minute
 });

@@ -95,4 +95,25 @@ router.patch('/:id/location', async (req, res) => {
     }
 });
 
+// POST /api/riders/:id/heartbeat
+router.post('/:id/heartbeat', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        await req.db.collection('users').updateOne(
+            { _id: new ObjectId(id) },
+            {
+                $set: {
+                    lastSeen: new Date(),
+                    isOnline: true // Ensure they stay marked as online
+                }
+            }
+        );
+        res.status(200).send();
+    } catch (error) {
+        // Silent fail for heartbeat usually
+        res.status(500).json({ message: error.message });
+    }
+});
+
 module.exports = router;
