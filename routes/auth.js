@@ -241,15 +241,20 @@ router.put('/profile', async (req, res) => {
             updates.isOnline = req.body.isOnline;
         }
 
-        if (shopCategories) {
-            updates.shopCategories = shopCategories;
-            if (shopCategories.length > 0) {
-                updates.shopCategory = shopCategories[0];
+        if (req.body.shopCategories) {
+            updates.shopCategories = req.body.shopCategories;
+            if (req.body.shopCategories.length > 0) {
+                updates.shopCategory = req.body.shopCategories[0];
             }
-        } else if (shopCategory) {
-            updates.shopCategory = shopCategory;
-            updates.shopCategories = [shopCategory];
+        } else if (req.body.shopCategory) {
+            updates.shopCategory = req.body.shopCategory;
+            updates.shopCategories = [req.body.shopCategory];
         }
+
+        if (req.body.vehicleType) updates.vehicleType = req.body.vehicleType;
+        if (req.body.vehiclePlate) updates.vehiclePlate = req.body.vehiclePlate;
+        if (req.body.licenseNumber) updates.licenseNumber = req.body.licenseNumber;
+        if (req.body.licenseImage) updates.licenseImage = req.body.licenseImage;
 
         if (req.body.bankDetails) {
             updates.bankDetails = req.body.bankDetails;
