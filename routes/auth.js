@@ -289,7 +289,9 @@ router.post('/fcm-token', async (req, res) => {
         }
 
         const decoded = jwt.verify(tokenHeader, JWT_SECRET);
+        console.log("FCM Token Update - Decoded ID:", decoded.id);
         const { fcmToken } = req.body;
+        console.log("FCM Token in Body:", fcmToken);
 
         if (!fcmToken) {
             return res.status(400).json({ message: "FCM token is required" });
@@ -303,7 +305,10 @@ router.post('/fcm-token', async (req, res) => {
         res.json({ success: true, message: "FCM token updated" });
     } catch (error) {
         console.error("FCM Token update error:", error);
-        res.status(500).json({ message: "Server error" });
+        if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+            return res.status(401).json({ message: "Invalid or expired token" });
+        }
+        res.status(500).json({ message: "Server error", error: error.message });
     }
 });
 
