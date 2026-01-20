@@ -173,7 +173,11 @@ router.get('/profile', async (req, res) => {
             shopLocation: user.shopLocation,
             shopLocation: user.shopLocation,
             shopImage: user.shopImage,
-            profileImage: user.profileImage, // Added profileImage
+            profileImage: user.profileImage,
+            vehicleType: user.vehicleType,
+            vehiclePlate: user.vehiclePlate,
+            licenseNumber: user.licenseNumber,
+            licenseImage: user.licenseImage,
             isOnline: user.isOnline,
             savedAddresses: user.savedAddresses || [],
             bankDetails: user.bankDetails || {}
