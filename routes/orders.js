@@ -221,64 +221,7 @@ router.get('/recent', async (req, res) => {
     }
 });
 
-// GET /api/orders/:id
-router.get('/:id', async (req, res) => {
-    try {
-        const { id } = req.params;
 
-        const pipeline = [
-            { $match: { _id: new ObjectId(id) } },
-            // Lookup Vendor
-            {
-                $lookup: {
-                    from: 'users',
-                    localField: 'vendorId',
-                    foreignField: '_id',
-                    as: 'vendor'
-                }
-            },
-            { $unwind: { path: '$vendor', preserveNullAndEmptyArrays: true } },
-            // Lookup Customer
-            {
-                $lookup: {
-                    from: 'users',
-                    localField: 'userId', // Assuming userId is customer
-                    foreignField: '_id',
-                    as: 'customer'
-                }
-            },
-            { $unwind: { path: '$customer', preserveNullAndEmptyArrays: true } },
-            {
-                $addFields: {
-                    vendorName: '$vendor.name',
-                    vendorAddress: '$vendor.address', // Important for Pickup
-                    vendorLocation: '$vendor.liveLocation',
-                    customerName: '$customer.name',
-                    // address is already in order usually, but let's ensure we have fallback
-                    customerPhone: '$customer.phoneNumber'
-                }
-            },
-            {
-                $project: {
-                    vendor: 0,
-                    customer: 0
-                }
-            }
-        ];
-
-        const orders = await req.db.collection('orders').aggregate(pipeline).toArray();
-        const order = orders[0];
-
-        if (!order) {
-            return res.status(404).json({ message: "Order not found" });
-        }
-
-        res.json(order);
-    } catch (error) {
-        console.error("Get order error:", error);
-        res.status(500).json({ message: error.message || "Server error" });
-    }
-});
 
 // PATCH /api/orders/:id/status
 router.patch('/:id/status', async (req, res) => {
@@ -425,6 +368,65 @@ router.patch('/:id/accept', async (req, res) => {
     } catch (error) {
         console.error("Accept order error:", error);
         res.status(500).json({ message: "Server error" });
+    }
+});
+
+// GET /api/orders/:id
+router.get('/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const pipeline = [
+            { $match: { _id: new ObjectId(id) } },
+            // Lookup Vendor
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: 'vendorId',
+                    foreignField: '_id',
+                    as: 'vendor'
+                }
+            },
+            { $unwind: { path: '$vendor', preserveNullAndEmptyArrays: true } },
+            // Lookup Customer
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: 'userId', // Assuming userId is customer
+                    foreignField: '_id',
+                    as: 'customer'
+                }
+            },
+            { $unwind: { path: '$customer', preserveNullAndEmptyArrays: true } },
+            {
+                $addFields: {
+                    vendorName: '$vendor.name',
+                    vendorAddress: '$vendor.address', // Important for Pickup
+                    vendorLocation: '$vendor.liveLocation',
+                    customerName: '$customer.name',
+                    // address is already in order usually, but let's ensure we have fallback
+                    customerPhone: '$customer.phoneNumber'
+                }
+            },
+            {
+                $project: {
+                    vendor: 0,
+                    customer: 0
+                }
+            }
+        ];
+
+        const orders = await req.db.collection('orders').aggregate(pipeline).toArray();
+        const order = orders[0];
+
+        if (!order) {
+            return res.status(404).json({ message: "Order not found" });
+        }
+
+        res.json(order);
+    } catch (error) {
+        console.error("Get order error:", error);
+        res.status(500).json({ message: error.message || "Server error" });
     }
 });
 
