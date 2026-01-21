@@ -3,6 +3,7 @@ const router = express.Router();
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { ObjectId } = require('mongodb');
+const admin = require('../firebase');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'xopunmart_secret_key_123';
 
@@ -302,10 +303,25 @@ router.post('/fcm-token', async (req, res) => {
             return res.status(400).json({ message: "FCM token is required" });
         }
 
+        const userId = decoded.id;
+
+        // Update MongoDB
         await req.db.collection('users').updateOne(
-            { _id: new ObjectId(decoded.id) },
+            { _id: new ObjectId(userId) },
             { $set: { fcmToken: fcmToken, updatedAt: new Date() } }
         );
+
+        // SYNC TO FIRESTORE
+        try {
+            const admin = require('../firebase'); // Ensure this import is available or use existing
+            await admin.firestore().collection('users').doc(userId).set({
+                fcmToken: fcmToken
+            }, { merge: true });
+            console.log("Synced FCM token to Firestore for:", userId);
+        } catch (fsError) {
+            console.error("Firestore Sync Error (FCM Token):", fsError);
+            // Don't fail the request if Firestore sync fails, but log it
+        }
 
         res.json({ success: true, message: "FCM token updated" });
     } catch (error) {
