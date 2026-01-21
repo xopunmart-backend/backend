@@ -298,27 +298,12 @@ router.patch('/:id/status', async (req, res) => {
 // GET /api/orders/available - Get orders ready for pickup
 router.get('/available', async (req, res) => {
     try {
-        // Find orders that are 'ready' (vendor prepared them) and have NO rider assigned yet
-        // For now, let's also include 'preparing' if you want riders to see them early, 
-        // but 'ready' is safer. Let's assume 'ready' for pickup.
-        // Also ensure riderId is null or missing.
-
-        const query = {
-            status: { $in: ['pending', 'preparing', 'ready'] }, // Show pending too for immediate visibility
-            riderId: { $exists: false } // No rider assigned
-        };
-
-        const orders = await req.db.collection('orders').find(query).sort({ createdAt: -1 }).toArray();
-
-        // Enrich with vendor details (store name, address)
-        // We can use aggregation for better performance, but loop is fine for MVP volume.
-        // Actually, let's use aggregation like above for efficiency.
-
+        // Find orders that are 'pending', 'preparing', or 'ready' and have NO rider assigned
         const pipeline = [
             {
                 $match: {
-                    status: { $in: ['ready', 'preparing'] },
-                    riderId: { $in: [null, undefined] } // Handle both null and undefined
+                    status: { $in: ['pending', 'preparing', 'ready'] },
+                    riderId: null // Matches null or missing field
                 }
             },
             { $sort: { createdAt: -1 } },
@@ -336,9 +321,9 @@ router.get('/available', async (req, res) => {
             },
             {
                 $addFields: {
-                    vendorName: '$vendor.name', // or storeName if you have it
-                    vendorAddress: '$vendor.address', // Assuming vendor has address in profile
-                    vendorLocation: '$vendor.liveLocation' // For map distance
+                    vendorName: '$vendor.name',
+                    vendorAddress: '$vendor.address',
+                    vendorLocation: '$vendor.liveLocation'
                 }
             },
             {
@@ -353,7 +338,7 @@ router.get('/available', async (req, res) => {
         res.json(richOrders);
     } catch (error) {
         console.error("Get available orders error:", error);
-        res.status(500).json({ message: "Server error" });
+        res.status(500).json({ message: error.message || "Server error" });
     }
 });
 
