@@ -48,11 +48,15 @@ async function assignOrderToNearestRider(db, orderId, vendorLocation, excludedRi
         const nearestRider = ridersWithDistance[0];
 
         // 5. Assign
+        // CRITICAL: Prefer Firebase UID for Firestore Rules compatibility.
+        // Fallback to MongoID if firebaseUid not set (but rules will fail).
+        const assignedId = nearestRider.firebaseUid || nearestRider._id.toString();
+
         await db.collection('orders').updateOne(
             { _id: new ObjectId(orderId) },
             {
                 $set: {
-                    visibleToRiderId: nearestRider._id,
+                    visibleToRiderId: assignedId, // Can be String (FirebaseUID) or ObjectId (MongoID)
                     status: 'requesting_rider',
                     assignmentStatus: 'assigned',
                     updatedAt: new Date()
