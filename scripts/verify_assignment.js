@@ -1,4 +1,4 @@
-require('dotenv').config({ path: '../.env' });
+require('dotenv').config();
 const { MongoClient, ObjectId } = require('mongodb');
 const axios = require('axios');
 
