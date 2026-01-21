@@ -113,15 +113,20 @@ router.patch('/:id/location', async (req, res) => {
 router.post('/:id/heartbeat', async (req, res) => {
     try {
         const { id } = req.params;
+        const { firebaseUid } = req.body; // Accept linkage
+
+        const updates = {
+            lastSeen: new Date(),
+            isOnline: true
+        };
+
+        if (firebaseUid) {
+            updates.firebaseUid = firebaseUid;
+        }
 
         await req.db.collection('users').updateOne(
             { _id: new ObjectId(id) },
-            {
-                $set: {
-                    lastSeen: new Date(),
-                    isOnline: true // Ensure they stay marked as online
-                }
-            }
+            { $set: updates }
         );
         res.status(200).send();
     } catch (error) {
