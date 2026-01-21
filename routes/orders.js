@@ -515,28 +515,45 @@ router.patch('/:id/reject', async (req, res) => {
 router.patch('/:id/accept', async (req, res) => {
     try {
         const { id } = req.params;
-        const { riderId } = req.body;
+        let { riderId } = req.body;
 
         if (!riderId) {
             return res.status(400).json({ message: "Rider ID is required" });
         }
 
-        // Use atomic findOneAndUpdate to ensure no race condition
-        // Only accept if NO riderId is set AND (visibleToRiderId matches OR it's open if we allow that)
-        // Here we strictly check visibleToRiderId to prevent poaching if we want strict assignment
+        let riderObjectId;
 
+        // Resolve riderId to Mongo ObjectId
+        if (ObjectId.isValid(riderId) && (String(new ObjectId(riderId)) === riderId)) {
+            // It's a valid Mongo ID string
+            riderObjectId = new ObjectId(riderId);
+        } else {
+            // Assume it's a Firebase UID
+            console.log(`Looking up Mongo ID for Firebase UID: ${riderId}`);
+            const user = await req.db.collection('users').findOne({ firebaseUid: riderId });
+            if (!user) {
+                return res.status(404).json({ message: "Rider not found for provided ID" });
+            }
+            riderObjectId = user._id;
+            // Update riderId to be the Mongo ID for consistency in 'orders' collection
+            // BUT we might need the Firebase UID for other things?
+            // Actually, the app likely sends Mongo ID if it has it.
+            // But if we start sending Firebase UID from app, we need this translation.
+        }
+
+        // Use atomic findOneAndUpdate to ensure no race condition
         const result = await req.db.collection('orders').findOneAndUpdate(
             {
                 _id: new ObjectId(id),
                 riderId: null, // Ensure not already taken
                 $or: [
-                    { visibleToRiderId: new ObjectId(riderId) },
-                    { visibleToRiderId: riderId } // Handle both String and ObjectId
+                    { visibleToRiderId: riderObjectId }, // Check Mongo ID
+                    { visibleToRiderId: riderId } // Check whatever was passed (e.g. Firebase UID)
                 ]
             },
             {
                 $set: {
-                    riderId: new ObjectId(riderId),
+                    riderId: riderObjectId,
                     status: 'accepted',
                     updatedAt: new Date(),
                     riderAcceptedAt: new Date()
