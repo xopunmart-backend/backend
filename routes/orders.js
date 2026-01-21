@@ -2,6 +2,73 @@ const express = require('express');
 const router = express.Router();
 const { ObjectId } = require('mongodb');
 const admin = require('../firebase');
+const { calculateDistance } = require('../utils/geo');
+
+// Helper: Find and assign nearest rider
+async function assignOrderToNearestRider(db, orderId, vendorLocation, excludedRiderIds = []) {
+    try {
+        console.log(`Finding rider for order ${orderId} near`, vendorLocation);
+
+        // 1. Find all online and available riders
+        const riders = await db.collection('users').find({
+            role: 'rider',
+            isOnline: true,
+            isAvailable: true,
+            _id: { $nin: excludedRiderIds.map(id => new ObjectId(id)) }
+        }).toArray();
+
+        // 2. Filter riders with valid location
+        const validRiders = riders.filter(r => r.liveLocation && r.liveLocation.latitude && r.liveLocation.longitude);
+
+        if (validRiders.length === 0) {
+            console.log("No available riders found.");
+            // Reset visibleToRiderId if previously set, or keep null
+            await db.collection('orders').updateOne(
+                { _id: new ObjectId(orderId) },
+                {
+                    $set: {
+                        visibleToRiderId: null,
+                        status: 'pending', // Revert to pending
+                        assignmentStatus: 'no_riders_available',
+                        updatedAt: new Date()
+                    }
+                }
+            );
+            return null;
+        }
+
+        // 3. Calculate distances
+        const ridersWithDistance = validRiders.map(rider => ({
+            ...rider,
+            distance: calculateDistance(vendorLocation, rider.liveLocation)
+        }));
+
+        // 4. Sort by distance
+        ridersWithDistance.sort((a, b) => a.distance - b.distance);
+        const nearestRider = ridersWithDistance[0];
+
+        // 5. Assign
+        await db.collection('orders').updateOne(
+            { _id: new ObjectId(orderId) },
+            {
+                $set: {
+                    visibleToRiderId: nearestRider._id,
+                    status: 'requesting_rider',
+                    assignmentStatus: 'assigned',
+                    updatedAt: new Date()
+                }
+            }
+        );
+
+        console.log(`Assigned order ${orderId} to rider ${nearestRider._id} (${nearestRider.name}) at ${nearestRider.distance}m`);
+
+        // TODO: Send FCM notification to rider
+        return nearestRider;
+
+    } catch (error) {
+        console.error("Assignment Error:", error);
+    }
+}
 
 // POST /api/orders - Create new order(s) from cart
 router.post('/', async (req, res) => {
@@ -39,6 +106,7 @@ router.post('/', async (req, res) => {
             const vId = product.vendorId.toString();
 
             if (!vendorOrders[vId]) {
+                const vendorUser = await req.db.collection('users').findOne({ _id: product.vendorId });
                 vendorOrders[vId] = {
                     vendorId: product.vendorId, // Keep original type
                     userId,
@@ -47,9 +115,12 @@ router.post('/', async (req, res) => {
                     status: 'pending', // pending, preparing, ready, picked, completed, cancelled
                     paymentMethod: paymentMethod || 'COD',
                     address,
-                    location, // Save lat/lng coordinates
+                    location, // Customer lat/lng coordinates
+                    vendorLocation: vendorUser ? vendorUser.liveLocation : null, // Store vendor location for assignment
                     createdAt: new Date(),
-                    updatedAt: new Date()
+                    updatedAt: new Date(),
+                    visibleToRiderId: null, // Initially null
+                    rejectedByRiders: [] // Track rejections
                 };
             }
 
@@ -72,6 +143,12 @@ router.post('/', async (req, res) => {
 
             const result = await orderCollection.insertOne(orderData);
             createdOrders.push({ ...orderData, _id: result.insertedId });
+
+            // Trigger Smart Assignment
+            if (orderData.vendorLocation) {
+                // Run asynchronously to not block response
+                assignOrderToNearestRider(req.db, result.insertedId, orderData.vendorLocation);
+            }
 
             // Create Notification for Vendor
             try {
@@ -327,8 +404,8 @@ router.get('/available', async (req, res) => {
     }
 });
 
-// PATCH /api/orders/:id/accept - Rider accepts an order
-router.patch('/:id/accept', async (req, res) => {
+// PATCH /api/orders/:id/reject - Rider rejects an order
+router.patch('/:id/reject', async (req, res) => {
     try {
         const { id } = req.params;
         const { riderId } = req.body;
@@ -342,29 +419,88 @@ router.patch('/:id/accept', async (req, res) => {
             return res.status(404).json({ message: "Order not found" });
         }
 
-        if (order.riderId) {
-            return res.status(400).json({ message: "Order already accepted by another rider" });
+        if (order.visibleToRiderId && order.visibleToRiderId.toString() !== riderId) {
+            return res.status(403).json({ message: "You are not assigned to this order" });
         }
 
-        // Update Order
+        // Add to rejected list and find next
         await req.db.collection('orders').updateOne(
             { _id: new ObjectId(id) },
             {
+                $addToSet: { rejectedByRiders: new ObjectId(riderId) },
+                $set: { visibleToRiderId: null, status: 'pending' } // Temporarily reset
+            }
+        );
+
+        // Re-fetch updated order to include the new rejection
+        const updatedOrder = await req.db.collection('orders').findOne({ _id: new ObjectId(id) });
+        const rejectedIds = updatedOrder.rejectedByRiders || [];
+
+        // Assign to next
+        if (updatedOrder.vendorLocation) {
+            // Run async
+            assignOrderToNearestRider(req.db, new ObjectId(id), updatedOrder.vendorLocation, rejectedIds);
+        }
+
+        res.json({ success: true, message: "Order rejected" });
+    } catch (error) {
+        console.error("Reject order error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+});
+
+// PATCH /api/orders/:id/accept - Rider accepts an order
+router.patch('/:id/accept', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { riderId } = req.body;
+
+        if (!riderId) {
+            return res.status(400).json({ message: "Rider ID is required" });
+        }
+
+        // Use atomic findOneAndUpdate to ensure no race condition
+        // Only accept if NO riderId is set AND (visibleToRiderId matches OR it's open if we allow that)
+        // Here we strictly check visibleToRiderId to prevent poaching if we want strict assignment
+
+        const result = await req.db.collection('orders').findOneAndUpdate(
+            {
+                _id: new ObjectId(id),
+                riderId: null, // Ensure not already taken
+                $or: [
+                    { visibleToRiderId: new ObjectId(riderId) },
+                    // { visibleToRiderId: null } // Optional: allow snatching if open? No, stick to strict.
+                ]
+            },
+            {
                 $set: {
                     riderId: new ObjectId(riderId),
-                    status: 'picked_up', // Or just 'accepted'? Usually 'accepted_by_rider' then 'picked_up'.
-                    // Let's use 'accepted' for now.
                     status: 'accepted',
                     updatedAt: new Date(),
                     riderAcceptedAt: new Date()
                 }
-            }
+            },
+            { returnDocument: 'after' }
+        );
+
+        if (!result) { // Order not found or already taken or not visible
+            // Check why failed
+            const check = await req.db.collection('orders').findOne({ _id: new ObjectId(id) });
+            if (!check) return res.status(404).json({ message: "Order not found" });
+            if (check.riderId) return res.status(400).json({ message: "Order already accepted by another rider" });
+            return res.status(403).json({ message: "Order not assigned to you" });
+        }
+
+        // Mark Rider as Busy
+        await req.db.collection('users').updateOne(
+            { _id: new ObjectId(riderId) },
+            { $set: { isAvailable: false } }
         );
 
         // Notify Vendor
         // TODO: Add notification logic here
 
-        res.json({ success: true, message: "Order accepted" });
+        res.json({ success: true, message: "Order accepted", order: result });
     } catch (error) {
         console.error("Accept order error:", error);
         res.status(500).json({ message: "Server error" });
