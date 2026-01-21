@@ -66,6 +66,19 @@ router.patch('/:id/status', async (req, res) => {
             { $set: updates }
         );
 
+        // SYNC TO FIRESTORE
+        if (result.matchedCount > 0 && firebaseUid) {
+            try {
+                await admin.firestore().collection('users').doc(firebaseUid).set({
+                    role: 'rider', // Ensure role
+                    isOnline: updates.isOnline ?? false, // Default to false if not set
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+            } catch (e) {
+                console.error("Firestore Sync Rider Status Error:", e);
+            }
+        }
+
         if (result.matchedCount === 0) {
             return res.status(404).json({ message: "Rider not found" });
         }
@@ -98,6 +111,29 @@ router.patch('/:id/location', async (req, res) => {
                 }
             }
         );
+
+        // SYNC TO FIRESTORE
+        // We need the firebaseUid to sync to correct doc.
+        // Option: Fetch it from Mongo, but that adds latency.
+        // Option: Pass it in body?
+        // For now, let's look it up quickly or skip.
+        // Ideally App sends firebaseUid in headers/body.
+        // Let's rely on finding by Mongo ID match in Firestore? No, Firestore keys are UIDs.
+        // We really need firebaseUid here.
+        // Let's do a quick lookup since we need it.
+        try {
+            const user = await req.db.collection('users').findOne({ _id: new ObjectId(id) }, { projection: { firebaseUid: 1 } });
+            if (user && user.firebaseUid) {
+                await admin.firestore().collection('users').doc(user.firebaseUid).update({
+                    liveLocation: {
+                        latitude: parseFloat(latitude),
+                        longitude: parseFloat(longitude)
+                    }
+                });
+            }
+        } catch (e) {
+            console.error("Firestore Sync Location Error:", e);
+        }
 
         if (result.matchedCount === 0) {
             return res.status(404).json({ message: "Rider not found" });

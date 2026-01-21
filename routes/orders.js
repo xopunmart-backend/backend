@@ -52,17 +52,30 @@ async function assignOrderToNearestRider(db, orderId, vendorLocation, excludedRi
         // Fallback to MongoID if firebaseUid not set (but rules will fail).
         const assignedId = nearestRider.firebaseUid || nearestRider._id.toString();
 
+        const updateDoc = {
+            visibleToRiderId: assignedId,
+            status: 'requesting_rider',
+            assignmentStatus: 'assigned',
+            updatedAt: new Date()
+        };
+
         await db.collection('orders').updateOne(
             { _id: new ObjectId(orderId) },
-            {
-                $set: {
-                    visibleToRiderId: assignedId, // Can be String (FirebaseUID) or ObjectId (MongoID)
-                    status: 'requesting_rider',
-                    assignmentStatus: 'assigned',
-                    updatedAt: new Date()
-                }
-            }
+            { $set: updateDoc }
         );
+
+        // SYNC TO FIRESTORE
+        try {
+            await admin.firestore().collection('orders').doc(orderId.toString()).update({
+                visibleToRiderId: assignedId,
+                status: 'requesting_rider',
+                assignmentStatus: 'assigned',
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+            console.log("Synced assignment to Firestore:", orderId.toString());
+        } catch (fsError) {
+            console.error("Firestore Sync Error (Assign):", fsError);
+        }
 
         console.log(`Assigned order ${orderId} to rider ${nearestRider._id} (${nearestRider.name}) at ${nearestRider.distance}m`);
 
@@ -147,6 +160,29 @@ router.post('/', async (req, res) => {
 
             const result = await orderCollection.insertOne(orderData);
             createdOrders.push({ ...orderData, _id: result.insertedId });
+
+            // SYNC TO FIRESTORE
+            try {
+                const firestoreOrder = {
+                    ...orderData,
+                    _id: result.insertedId.toString(), // Store Mongo ID as string
+                    vendorId: orderData.vendorId.toString(),
+                    userId: orderData.userId.toString(),
+                    createdAt: admin.firestore.Timestamp.fromDate(orderData.createdAt),
+                    updatedAt: admin.firestore.Timestamp.fromDate(orderData.updatedAt),
+                    // Ensure lat/lng are simple objects or Geopoints
+                    vendorLocation: orderData.vendorLocation ? {
+                        latitude: orderData.vendorLocation.latitude,
+                        longitude: orderData.vendorLocation.longitude
+                    } : null
+                };
+
+                // Use MongoID as Doc ID in Firestore for easy mapping
+                await admin.firestore().collection('orders').doc(result.insertedId.toString()).set(firestoreOrder);
+                console.log("Synced order to Firestore:", result.insertedId.toString());
+            } catch (fsError) {
+                console.error("Firestore Sync Error (Create):", fsError);
+            }
 
             // Trigger Smart Assignment
             if (orderData.vendorLocation) {
@@ -323,6 +359,16 @@ router.patch('/:id/status', async (req, res) => {
             return res.status(404).json({ message: "Order not found" });
         }
 
+        // SYNC TO FIRESTORE
+        try {
+            await admin.firestore().collection('orders').doc(id).update({
+                status: status,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+        } catch (fsError) {
+            console.error("Firestore Sync Error (Status Update):", fsError);
+        }
+
         // START: Credit Wallet on Completion
         if (status === 'completed') {
             const order = await req.db.collection('orders').findOne({ _id: new ObjectId(id) });
@@ -436,6 +482,18 @@ router.patch('/:id/reject', async (req, res) => {
             }
         );
 
+        // SYNC TO FIRESTORE
+        try {
+            await admin.firestore().collection('orders').doc(id).update({
+                visibleToRiderId: null,
+                status: 'pending',
+                // Firestore doesn't support $addToSet in same way, need arrayUnion
+                rejectedByRiders: admin.firestore.FieldValue.arrayUnion(riderId)
+            });
+        } catch (fsError) {
+            console.error("Firestore Sync Error (Reject):", fsError);
+        }
+
         // Re-fetch updated order to include the new rejection
         const updatedOrder = await req.db.collection('orders').findOne({ _id: new ObjectId(id) });
         const rejectedIds = updatedOrder.rejectedByRiders || [];
@@ -473,7 +531,7 @@ router.patch('/:id/accept', async (req, res) => {
                 riderId: null, // Ensure not already taken
                 $or: [
                     { visibleToRiderId: new ObjectId(riderId) },
-                    // { visibleToRiderId: null } // Optional: allow snatching if open? No, stick to strict.
+                    { visibleToRiderId: riderId } // Handle both String and ObjectId
                 ]
             },
             {
@@ -486,6 +544,20 @@ router.patch('/:id/accept', async (req, res) => {
             },
             { returnDocument: 'after' }
         );
+
+        // SYNC TO FIRESTORE
+        if (result) {
+            try {
+                await admin.firestore().collection('orders').doc(id).update({
+                    riderId: riderId,
+                    status: 'accepted',
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    riderAcceptedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+            } catch (fsError) {
+                console.error("Firestore Sync Error (Accept):", fsError);
+            }
+        }
 
         if (!result) { // Order not found or already taken or not visible
             // Check why failed
