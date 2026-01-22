@@ -71,10 +71,12 @@ router.post('/signup', async (req, res) => {
         // Generate Firebase Custom Token (for Vendor App mostly, to sync IDs)
         let firebaseToken = null;
         try {
-            firebaseToken = await admin.auth().createCustomToken(result.insertedId.toString());
+            firebaseToken = await admin.auth().createCustomToken(result.insertedId.toString(), { role: userRole });
         } catch (ftError) {
             console.error("Error generating firebase token:", ftError);
         }
+
+
 
         res.status(201).json({
             token,
@@ -135,7 +137,7 @@ router.post('/login', async (req, res) => {
         // Generate Firebase Custom Token
         let firebaseToken = null;
         try {
-            firebaseToken = await admin.auth().createCustomToken(user._id.toString());
+            firebaseToken = await admin.auth().createCustomToken(user._id.toString(), { role: user.role });
         } catch (ftError) {
             console.error("Error generating firebase token (Login):", ftError);
         }
@@ -175,7 +177,9 @@ router.get('/firebase-token', async (req, res) => {
         const userId = decoded.id;
 
         // Generate Custom Token
-        const firebaseToken = await admin.auth().createCustomToken(userId);
+        const user = await req.db.collection('users').findOne({ _id: new ObjectId(userId) });
+        const role = user ? user.role : 'user';
+        const firebaseToken = await admin.auth().createCustomToken(userId, { role: role });
         res.json({ firebaseToken });
     } catch (error) {
         console.error("Error generating firebase token (refresh):", error);
