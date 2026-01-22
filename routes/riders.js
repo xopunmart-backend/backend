@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { ObjectId } = require('mongodb');
+const { checkAndAssignPendingOrders } = require('../utils/orderAssignment');
 
 // GET /api/riders
 router.get('/', async (req, res) => {
@@ -65,6 +66,12 @@ router.patch('/:id/status', async (req, res) => {
             { _id: new ObjectId(id) },
             { $set: updates }
         );
+
+        // If going online, trigger assignment for pending orders
+        if (status === 'online') {
+            // Run asynchronously
+            checkAndAssignPendingOrders(req.db);
+        }
 
         // SYNC TO FIRESTORE
         if (result.matchedCount > 0 && firebaseUid) {
