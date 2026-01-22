@@ -165,6 +165,24 @@ router.post('/login', async (req, res) => {
     }
 });
 
+// GET /api/auth/firebase-token
+router.get('/firebase-token', async (req, res) => {
+    try {
+        const token = req.headers.authorization?.split(' ')[1];
+        if (!token) return res.status(401).json({ message: "No token provided" });
+
+        const decoded = jwt.verify(token, JWT_SECRET);
+        const userId = decoded.id;
+
+        // Generate Custom Token
+        const firebaseToken = await admin.auth().createCustomToken(userId);
+        res.json({ firebaseToken });
+    } catch (error) {
+        console.error("Error generating firebase token (refresh):", error);
+        res.status(401).json({ message: "Invalid token or server error" });
+    }
+});
+
 // PUT /api/auth/firebase-uid
 router.put('/firebase-uid', async (req, res) => {
     try {
