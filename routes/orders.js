@@ -123,11 +123,19 @@ router.post('/', async (req, res) => {
                 // START: Send Push Notification
                 // START: Send Push Notification
                 // Fetch FCM Token from Firestore
+                // Fetch FCM Token from Firestore
+                // Vendor App saves to 'vendors' collection using UID (which matches MongoID due to Custom Token)
                 let vendorFcmToken = null;
                 try {
-                    const vendorDoc = await admin.firestore().collection('users').doc(vId).get();
+                    const vendorDoc = await admin.firestore().collection('vendors').doc(vId).get();
                     if (vendorDoc.exists) {
                         vendorFcmToken = vendorDoc.data().fcmToken;
+                    } else {
+                        // Fallback: Check 'users' collection just in case old app used it or misconfiguration
+                        const userDoc = await admin.firestore().collection('users').doc(vId).get();
+                        if (userDoc.exists) {
+                            vendorFcmToken = userDoc.data().fcmToken;
+                        }
                     }
                 } catch (e) {
                     console.error(`[FCM] Error fetching token for vendor ${vId} from Firestore:`, e);

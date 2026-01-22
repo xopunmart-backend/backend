@@ -83,7 +83,36 @@ async function assignOrderToNearestRider(db, orderId, vendorLocation, excludedRi
 
         console.log(`Assigned order ${orderId} to rider ${nearestRider._id} (${nearestRider.name}) at ${nearestRider.distance}m`);
 
-        // TODO: Send FCM notification to rider
+        // Send FCM notification to rider
+        try {
+            let riderToken = null;
+            // Rider App saves to 'riders' collection in Firestore
+            const riderDoc = await admin.firestore().collection('riders').doc(assignedId).get();
+            if (riderDoc.exists) {
+                riderToken = riderDoc.data().fcmToken;
+            }
+
+            if (riderToken) {
+                const message = {
+                    notification: {
+                        title: "New Delivery Assigned",
+                        body: "You have been assigned a new order."
+                    },
+                    data: {
+                        type: "order_assigned",
+                        orderId: orderId.toString()
+                    },
+                    token: riderToken
+                };
+                await admin.messaging().send(message);
+                console.log(`[FCM] Sent assignment notification to rider ${assignedId}`);
+            } else {
+                console.log(`[FCM] Rider ${assignedId} has no fcmToken in Firestore (riders).`);
+            }
+        } catch (notifErr) {
+            console.error("[FCM] Error sending rider notification:", notifErr);
+        }
+
         return nearestRider;
 
     } catch (error) {

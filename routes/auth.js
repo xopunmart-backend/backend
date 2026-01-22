@@ -68,8 +68,17 @@ router.post('/signup', async (req, res) => {
             { expiresIn: '365d' }
         );
 
+        // Generate Firebase Custom Token (for Vendor App mostly, to sync IDs)
+        let firebaseToken = null;
+        try {
+            firebaseToken = await admin.auth().createCustomToken(result.insertedId.toString());
+        } catch (ftError) {
+            console.error("Error generating firebase token:", ftError);
+        }
+
         res.status(201).json({
             token,
+            firebaseToken, // Send custom token
             user: {
                 id: result.insertedId,
                 email,
@@ -123,8 +132,17 @@ router.post('/login', async (req, res) => {
             { expiresIn: '365d' }
         );
 
+        // Generate Firebase Custom Token
+        let firebaseToken = null;
+        try {
+            firebaseToken = await admin.auth().createCustomToken(user._id.toString());
+        } catch (ftError) {
+            console.error("Error generating firebase token (Login):", ftError);
+        }
+
         res.json({
             token,
+            firebaseToken, // Send custom token
             user: {
                 id: user._id,
                 email: user.email,
@@ -136,13 +154,37 @@ router.post('/login', async (req, res) => {
                 liveLocation: user.liveLocation,
                 shopLocation: user.shopLocation,
                 shopImage: user.shopImage,
-                isOnline: user.isOnline
+                isOnline: user.isOnline,
+                firebaseUid: user.firebaseUid // Send back if exists
             }
         });
 
     } catch (error) {
         console.error("Login error:", error);
         res.status(500).json({ message: "Server error" });
+    }
+});
+
+// PUT /api/auth/firebase-uid
+router.put('/firebase-uid', async (req, res) => {
+    try {
+        const token = req.headers.authorization?.split(' ')[1];
+        if (!token) return res.status(401).json({ message: "No token provided" });
+
+        const decoded = jwt.verify(token, JWT_SECRET);
+        const { firebaseUid } = req.body;
+
+        if (!firebaseUid) return res.status(400).json({ message: "Firebase UID required" });
+
+        await req.db.collection('users').updateOne(
+            { _id: new ObjectId(decoded.id) },
+            { $set: { firebaseUid: firebaseUid, updatedAt: new Date() } }
+        );
+
+        res.json({ success: true, message: "Firebase UID linked" });
+    } catch (error) {
+        console.error("Firebase UID sync error:", error);
+        res.status(401).json({ message: "Invalid token" });
     }
 });
 
@@ -181,7 +223,8 @@ router.get('/profile', async (req, res) => {
             licenseImage: user.licenseImage,
             isOnline: user.isOnline,
             savedAddresses: user.savedAddresses || [],
-            bankDetails: user.bankDetails || {}
+            bankDetails: user.bankDetails || {},
+            firebaseUid: user.firebaseUid
         });
     } catch (error) {
         console.error("Profile fetch error:", error);
@@ -294,42 +337,13 @@ router.post('/fcm-token', async (req, res) => {
             return res.status(401).json({ message: "No token provided" });
         }
 
-        const decoded = jwt.verify(tokenHeader, JWT_SECRET);
-        console.log("FCM Token Update - Decoded ID:", decoded.id);
-        const { fcmToken } = req.body;
-        console.log("FCM Token in Body:", fcmToken);
+        // Just return success for backward compatibility or if app calls it
+        // The real work is done in Firestore now
+        res.json({ success: true, message: "FCM token deprecated in Mongo" });
 
-        if (!fcmToken) {
-            return res.status(400).json({ message: "FCM token is required" });
-        }
-
-        const userId = decoded.id;
-
-        // Update MongoDB - REMOVED fcmToken update as per requirement
-        // Only updating updatedAt
-        await req.db.collection('users').updateOne(
-            { _id: new ObjectId(userId) },
-            { $set: { updatedAt: new Date() } }
-        );
-
-        // SYNC TO FIRESTORE (Primary storage for FCM Token now)
-        try {
-            const admin = require('../firebase');
-            await admin.firestore().collection('users').doc(userId).set({
-                fcmToken: fcmToken
-            }, { merge: true });
-            console.log("Synced FCM token to Firestore for:", userId);
-        } catch (fsError) {
-            console.error("Firestore Sync Error (FCM Token):", fsError);
-        }
-
-        res.json({ success: true, message: "FCM token updated" });
     } catch (error) {
         console.error("FCM Token update error:", error);
-        if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
-            return res.status(401).json({ message: "Invalid or expired token" });
-        }
-        res.status(500).json({ message: "Server error", error: error.message });
+        res.status(500).json({ message: "Server error" });
     }
 });
 
