@@ -267,8 +267,23 @@ router.get('/profile', async (req, res) => {
             return res.status(401).json({ message: "No token provided" });
         }
 
-        const decoded = jwt.verify(token, JWT_SECRET);
-        const user = await req.db.collection('users').findOne({ _id: new ObjectId(decoded.id) });
+        let user;
+
+        // Strategy 1: Try Firebase ID Token
+        try {
+            const decodedFirebase = await admin.auth().verifyIdToken(token);
+            // specific query for firebase user
+            user = await req.db.collection('users').findOne({ $or: [{ firebaseUid: decodedFirebase.uid }, { email: decodedFirebase.email }] });
+            // If user found via email but no firebaseUid, sync it? (Optional, skipping for read-only)
+        } catch (firebaseError) {
+            // Strategy 2: Try JWT (Legacy)
+            try {
+                const decodedJwt = jwt.verify(token, JWT_SECRET);
+                user = await req.db.collection('users').findOne({ _id: new ObjectId(decodedJwt.id) });
+            } catch (jwtError) {
+                return res.status(401).json({ message: "Invalid token" });
+            }
+        }
 
         if (!user) {
             return res.status(404).json({ message: "User not found" });
@@ -285,7 +300,6 @@ router.get('/profile', async (req, res) => {
             shopCategories: user.shopCategories || [],
             liveLocation: user.liveLocation,
             shopLocation: user.shopLocation,
-            shopLocation: user.shopLocation,
             shopImage: user.shopImage,
             profileImage: user.profileImage,
             vehicleType: user.vehicleType,
@@ -299,7 +313,7 @@ router.get('/profile', async (req, res) => {
         });
     } catch (error) {
         console.error("Profile fetch error:", error);
-        res.status(401).json({ message: "Invalid token" });
+        res.status(500).json({ message: "Server error" });
     }
 });
 
@@ -331,9 +345,27 @@ router.put('/profile', async (req, res) => {
             return res.status(401).json({ message: "No token provided" });
         }
 
-        const decoded = jwt.verify(token, JWT_SECRET);
+        let userId;
+
+        // Strategy 1: Firebase ID Token
+        try {
+            const decodedFirebase = await admin.auth().verifyIdToken(token);
+            const user = await req.db.collection('users').findOne({ $or: [{ firebaseUid: decodedFirebase.uid }, { email: decodedFirebase.email }] });
+            if (!user) {
+                return res.status(404).json({ message: "User not found" });
+            }
+            userId = user._id; // Use MongoDB ID for updates
+        } catch (firebaseError) {
+            // Strategy 2: JWT (Legacy)
+            try {
+                const decoded = jwt.verify(token, JWT_SECRET);
+                userId = new ObjectId(decoded.id);
+            } catch (jwtError) {
+                return res.status(401).json({ message: "Invalid token" });
+            }
+        }
+
         const { name, phone, email, password, shopImage, shopCategories, shopCategory } = req.body;
-        const userId = new ObjectId(decoded.id);
 
         const updates = { updatedAt: new Date() };
         if (name) updates.name = name;
