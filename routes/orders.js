@@ -121,9 +121,20 @@ router.post('/', async (req, res) => {
                 await req.db.collection('notifications').insertOne(notificationData);
 
                 // START: Send Push Notification
-                const vendorUser = await req.db.collection('users').findOne({ _id: new ObjectId(vId) });
-                if (vendorUser && vendorUser.fcmToken) {
-                    console.log(`[FCM] Found vendor ${vId} with token: ${vendorUser.fcmToken.substring(0, 10)}...`);
+                // START: Send Push Notification
+                // Fetch FCM Token from Firestore
+                let vendorFcmToken = null;
+                try {
+                    const vendorDoc = await admin.firestore().collection('users').doc(vId).get();
+                    if (vendorDoc.exists) {
+                        vendorFcmToken = vendorDoc.data().fcmToken;
+                    }
+                } catch (e) {
+                    console.error(`[FCM] Error fetching token for vendor ${vId} from Firestore:`, e);
+                }
+
+                if (vendorFcmToken) {
+                    console.log(`[FCM] Found vendor ${vId} with token: ${vendorFcmToken.substring(0, 10)}...`);
                     const messagePayload = {
                         notification: {
                             title: notificationData.title,
@@ -133,7 +144,7 @@ router.post('/', async (req, res) => {
                             type: 'order',
                             orderId: result.insertedId.toString()
                         },
-                        token: vendorUser.fcmToken
+                        token: vendorFcmToken
                     };
 
                     try {
@@ -143,7 +154,7 @@ router.post('/', async (req, res) => {
                         console.error(`[FCM] Error sending push to vendor ${vId}:`, fcmError);
                     }
                 } else {
-                    console.log(`[FCM] Vendor ${vId} has no FCM token. Push skipped.`);
+                    console.log(`[FCM] Vendor ${vId} has no FCM token in Firestore. Push skipped.`);
                 }
                 // END: Send Push Notification
 

@@ -305,22 +305,22 @@ router.post('/fcm-token', async (req, res) => {
 
         const userId = decoded.id;
 
-        // Update MongoDB
+        // Update MongoDB - REMOVED fcmToken update as per requirement
+        // Only updating updatedAt
         await req.db.collection('users').updateOne(
             { _id: new ObjectId(userId) },
-            { $set: { fcmToken: fcmToken, updatedAt: new Date() } }
+            { $set: { updatedAt: new Date() } }
         );
 
-        // SYNC TO FIRESTORE
+        // SYNC TO FIRESTORE (Primary storage for FCM Token now)
         try {
-            const admin = require('../firebase'); // Ensure this import is available or use existing
+            const admin = require('../firebase');
             await admin.firestore().collection('users').doc(userId).set({
                 fcmToken: fcmToken
             }, { merge: true });
             console.log("Synced FCM token to Firestore for:", userId);
         } catch (fsError) {
             console.error("Firestore Sync Error (FCM Token):", fsError);
-            // Don't fail the request if Firestore sync fails, but log it
         }
 
         res.json({ success: true, message: "FCM token updated" });

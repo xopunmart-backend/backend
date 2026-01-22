@@ -24,7 +24,8 @@ async function run() {
                     isOnline: true,
                     isAvailable: true,
                     liveLocation: { latitude: 28.6139, longitude: 77.2090 }, // New Delhi
-                    fcmToken: "test_token_1"
+                    liveLocation: { latitude: 28.6139, longitude: 77.2090 }, // New Delhi
+                    // fcmToken: "test_token_1" // No longer stored in Mongo
                 }
             },
             { upsert: true }
@@ -42,7 +43,8 @@ async function run() {
                     isOnline: true,
                     isAvailable: true,
                     liveLocation: { latitude: 28.6200, longitude: 77.2100 }, // Slightly further
-                    fcmToken: "test_token_2"
+                    liveLocation: { latitude: 28.6200, longitude: 77.2100 }, // Slightly further
+                    // fcmToken: "test_token_2" // No longer stored in Mongo
                 }
             },
             { upsert: true }
