@@ -232,6 +232,9 @@ router.post('/firebase-login', async (req, res) => {
 
     } catch (error) {
         console.error("Firebase Login Error:", error);
+        console.error("Token received (first 20 chars):", req.body.idToken ? req.body.idToken.substring(0, 20) : "NONE");
+        console.error("Error Code:", error.code);
+        console.error("Error Message:", error.message);
         res.status(401).json({ message: "Invalid ID Token", error: error.message });
     }
 });
