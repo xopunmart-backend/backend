@@ -121,18 +121,23 @@ router.post('/', async (req, res) => {
                 await req.db.collection('notifications').insertOne(notificationData);
 
                 // START: Send Push Notification
-                // START: Send Push Notification
                 // Fetch FCM Token from Firestore
-                // Fetch FCM Token from Firestore
-                // Vendor App saves to 'vendors' collection using UID (which matches MongoID due to Custom Token)
                 let vendorFcmToken = null;
                 try {
-                    const vendorDoc = await admin.firestore().collection('vendors').doc(vId).get();
+                    // 1. Get Vendor's Firebase UID from MongoDB
+                    const vendorUser = await req.db.collection('users').findOne({ _id: new ObjectId(vId) });
+                    const vendorFirebaseUid = vendorUser ? vendorUser.firebaseUid : null;
+                    const docIdToUse = vendorFirebaseUid || vId; // Fallback to MongoID (legacy)
+
+                    console.log(`[FCM] Checking token for vendor ${vId} (FirebaseUID: ${vendorFirebaseUid || 'N/A'})...`);
+
+                    // 2. Check 'vendors' collection (New App)
+                    const vendorDoc = await admin.firestore().collection('vendors').doc(docIdToUse).get();
                     if (vendorDoc.exists) {
                         vendorFcmToken = vendorDoc.data().fcmToken;
                     } else {
-                        // Fallback: Check 'users' collection just in case old app used it or misconfiguration
-                        const userDoc = await admin.firestore().collection('users').doc(vId).get();
+                        // 3. Fallback: Check 'users' collection (Old App/Misconfig)
+                        const userDoc = await admin.firestore().collection('users').doc(docIdToUse).get();
                         if (userDoc.exists) {
                             vendorFcmToken = userDoc.data().fcmToken;
                         }
