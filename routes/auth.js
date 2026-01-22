@@ -167,23 +167,72 @@ router.post('/login', async (req, res) => {
     }
 });
 
-// GET /api/auth/firebase-token
-router.get('/firebase-token', async (req, res) => {
+// POST /api/auth/firebase-login
+router.post('/firebase-login', async (req, res) => {
     try {
-        const token = req.headers.authorization?.split(' ')[1];
-        if (!token) return res.status(401).json({ message: "No token provided" });
+        const { idToken, name, email, phone, role } = req.body;
 
-        const decoded = jwt.verify(token, JWT_SECRET);
-        const userId = decoded.id;
+        if (!idToken) {
+            return res.status(400).json({ message: "ID Token is required" });
+        }
 
-        // Generate Custom Token
-        const user = await req.db.collection('users').findOne({ _id: new ObjectId(userId) });
-        const role = user ? user.role : 'user';
-        const firebaseToken = await admin.auth().createCustomToken(userId, { role: role });
-        res.json({ firebaseToken });
+        // 1. Verify Firebase Token
+        const decodedToken = await admin.auth().verifyIdToken(idToken);
+        const { uid, email: firebaseEmail } = decodedToken;
+
+        console.log(`Firebase Auth: Verified user ${uid} (${firebaseEmail})`);
+
+        // 2. Find or Create User in MongoDB
+        let user = await req.db.collection('users').findOne({
+            $or: [{ firebaseUid: uid }, { email: firebaseEmail }]
+        });
+
+        const userRole = role || (user ? user.role : 'vendor'); // Default to vendor for new users if not specified
+
+        if (user) {
+            // Update existing user with UID if missing
+            if (!user.firebaseUid) {
+                await req.db.collection('users').updateOne(
+                    { _id: user._id },
+                    { $set: { firebaseUid: uid, updatedAt: new Date() } }
+                );
+                user.firebaseUid = uid;
+            }
+        } else {
+            // Create New User
+            const newUser = {
+                name: name || 'New User',
+                email: firebaseEmail,
+                phone: phone || '',
+                role: userRole,
+                firebaseUid: uid,
+                status: 'Pending', // Pending approval
+                isOnline: false,
+                createdAt: new Date(),
+                updatedAt: new Date()
+            };
+            const result = await req.db.collection('users').insertOne(newUser);
+            user = { ...newUser, _id: result.insertedId };
+        }
+
+        // 3. Return User Data (The App will strictly use Firebase User for its session, but needs Mongo ID for business logic)
+        res.json({
+            success: true,
+            user: {
+                id: user._id,
+                email: user.email,
+                name: user.name,
+                role: user.role,
+                status: user.status,
+                phone: user.phone,
+                shopCategory: user.shopCategory,
+                firebaseUid: uid
+            }
+        });
+
     } catch (error) {
-        console.error("Error generating firebase token (refresh):", error);
-        res.status(401).json({ message: "Invalid token or server error" });
+        console.error("Firebase Login Error:", error);
+        res.status(401).json({ message: "Invalid ID Token", error: error.message });
     }
 });
 
