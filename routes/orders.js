@@ -123,6 +123,7 @@ router.post('/', async (req, res) => {
                 // START: Send Push Notification
                 const vendorUser = await req.db.collection('users').findOne({ _id: new ObjectId(vId) });
                 if (vendorUser && vendorUser.fcmToken) {
+                    console.log(`[FCM] Found vendor ${vId} with token: ${vendorUser.fcmToken.substring(0, 10)}...`);
                     const messagePayload = {
                         notification: {
                             title: notificationData.title,
@@ -136,11 +137,13 @@ router.post('/', async (req, res) => {
                     };
 
                     try {
-                        await admin.messaging().send(messagePayload);
-                        console.log(`Push notification sent to vendor ${vId}`);
+                        const fcmResponse = await admin.messaging().send(messagePayload);
+                        console.log(`[FCM] Push notification sent to vendor ${vId}. Response: ${fcmResponse}`);
                     } catch (fcmError) {
-                        console.error(`Error sending push to vendor ${vId}:`, fcmError);
+                        console.error(`[FCM] Error sending push to vendor ${vId}:`, fcmError);
                     }
+                } else {
+                    console.log(`[FCM] Vendor ${vId} has no FCM token. Push skipped.`);
                 }
                 // END: Send Push Notification
 
