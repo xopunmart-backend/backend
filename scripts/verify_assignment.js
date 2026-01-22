@@ -2,7 +2,7 @@ require('dotenv').config();
 const { MongoClient, ObjectId } = require('mongodb');
 const axios = require('axios');
 
-const uri = process.env.MONGO_URI;
+const uri = process.env.MONGO_URI || 'mongodb://localhost:27017/xopunmart';
 const client = new MongoClient(uri);
 
 const API_URL = 'http://localhost:3000/api';
@@ -24,7 +24,6 @@ async function run() {
                     isOnline: true,
                     isAvailable: true,
                     liveLocation: { latitude: 28.6139, longitude: 77.2090 }, // New Delhi
-                    liveLocation: { latitude: 28.6139, longitude: 77.2090 }, // New Delhi
                     // fcmToken: "test_token_1" // No longer stored in Mongo
                 }
             },
@@ -42,7 +41,6 @@ async function run() {
                     role: "rider",
                     isOnline: true,
                     isAvailable: true,
-                    liveLocation: { latitude: 28.6200, longitude: 77.2100 }, // Slightly further
                     liveLocation: { latitude: 28.6200, longitude: 77.2100 }, // Slightly further
                     // fcmToken: "test_token_2" // No longer stored in Mongo
                 }
