@@ -37,8 +37,8 @@ router.post('/', async (req, res) => {
                 name: product.name,
                 price: parseFloat(product.price),
                 quantity: item.quantity,
-                image: product.image,
-                unit: product.unit,
+                image: product.image || null,
+                unit: product.unit || '',
                 vendorId: product.vendorId.toString()
             };
 
