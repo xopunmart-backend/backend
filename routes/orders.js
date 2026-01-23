@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { ObjectId } = require('mongodb');
 const admin = require('../firebase');
+const { authenticateToken } = require('../middleware/auth');
 const { assignOrderToNearestRider } = require('../utils/orderAssignment');
 
 // POST /api/orders - Create new order(s) from cart
@@ -196,7 +197,7 @@ router.get('/user/:userId', async (req, res) => {
 });
 
 // GET /api/orders/recent?vendorId=...
-router.get('/recent', async (req, res) => {
+router.get('/recent', authenticateToken, async (req, res) => {
     try {
         const { vendorId } = req.query;
         if (!vendorId) {
