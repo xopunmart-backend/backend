@@ -491,11 +491,17 @@ router.patch('/:id/accept', async (req, res) => {
         }
 
         let riderObjectId;
+        let riderFirebaseUid = null;
 
-        // Resolve riderId to Mongo ObjectId
+        // Resolve riderId to Mongo ObjectId AND Firebase UID
         if (ObjectId.isValid(riderId) && (String(new ObjectId(riderId)) === riderId)) {
             // It's a valid Mongo ID string
             riderObjectId = new ObjectId(riderId);
+            // Fetch user to get Firebase UID
+            const user = await req.db.collection('users').findOne({ _id: riderObjectId });
+            if (user) {
+                riderFirebaseUid = user.firebaseUid;
+            }
         } else {
             // Assume it's a Firebase UID
             console.log(`Looking up Mongo ID for Firebase UID: ${riderId}`);
@@ -504,10 +510,21 @@ router.patch('/:id/accept', async (req, res) => {
                 return res.status(404).json({ message: "Rider not found for provided ID" });
             }
             riderObjectId = user._id;
-            // Update riderId to be the Mongo ID for consistency in 'orders' collection
-            // BUT we might need the Firebase UID for other things?
-            // Actually, the app likely sends Mongo ID if it has it.
-            // But if we start sending Firebase UID from app, we need this translation.
+            riderFirebaseUid = riderId; // It WAS the firebase UID
+        }
+
+        // Build match conditions
+        const visibleToConditions = [
+            { visibleToRiderId: riderObjectId }, // Check Mongo ID (Object)
+            { visibleToRiderId: riderObjectId.toString() } // Check Mongo ID (String)
+        ];
+
+        if (riderFirebaseUid) {
+            visibleToConditions.push({ visibleToRiderId: riderFirebaseUid });
+        }
+        // Also check if riderId passed was just a random string that matched visibleToRiderId (fallback)
+        if (riderId) {
+            visibleToConditions.push({ visibleToRiderId: riderId });
         }
 
         // Use atomic findOneAndUpdate to ensure no race condition
@@ -515,10 +532,7 @@ router.patch('/:id/accept', async (req, res) => {
             {
                 _id: new ObjectId(id),
                 riderId: null, // Ensure not already taken
-                $or: [
-                    { visibleToRiderId: riderObjectId }, // Check Mongo ID
-                    { visibleToRiderId: riderId } // Check whatever was passed (e.g. Firebase UID)
-                ]
+                $or: visibleToConditions
             },
             {
                 $set: {
