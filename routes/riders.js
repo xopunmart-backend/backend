@@ -54,8 +54,14 @@ router.patch('/:id/status', async (req, res) => {
         };
 
         // Map status to boolean isOnline
-        if (status === 'online') updates.isOnline = true;
-        if (status === 'offline') updates.isOnline = false;
+        if (status === 'online') {
+            updates.isOnline = true;
+            updates.isAvailable = true; // Mark as available for orders
+        }
+        if (status === 'offline') {
+            updates.isOnline = false;
+            updates.isAvailable = false;
+        }
 
         // Save Firebase UID if provided (Linkage Step)
         if (firebaseUid) {

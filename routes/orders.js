@@ -345,6 +345,18 @@ router.patch('/:id/status', async (req, res) => {
         }
         // END: Credit Wallet
 
+        // START: Free up Rider if Completed or Cancelled
+        if (status === 'completed' || status === 'cancelled') {
+            const order = await req.db.collection('orders').findOne({ _id: new ObjectId(id) });
+            if (order && order.riderId) {
+                await req.db.collection('users').updateOne(
+                    { _id: order.riderId },
+                    { $set: { isAvailable: true } }
+                );
+            }
+        }
+        // END: Free up Rider
+
         res.json({ message: "Order status updated", status });
     } catch (error) {
         res.status(500).json({ message: error.message });
