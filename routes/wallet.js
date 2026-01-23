@@ -2,15 +2,14 @@ const express = require('express');
 const router = express.Router();
 const { ObjectId } = require('mongodb');
 const jwt = require('jsonwebtoken');
+const { authenticateToken } = require('../middleware/auth');
 
 const admin = require('../firebase');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'xopunmart_secret_key_123';
 
 
-const { authenticateToken } = require('../middleware/auth');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'xopunmart_secret_key_123';
 
 
 
