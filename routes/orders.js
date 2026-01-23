@@ -65,9 +65,9 @@ router.post('/', async (req, res) => {
 
                     // Vendor Info (Denormalized)
                     vendorName: (vendorUser && vendorUser.name) ? vendorUser.name : 'Unknown Vendor',
-                    vendorAddress: (vendorUser && vendorUser.address) ? vendorUser.address : '',
-                    vendorLocation: (vendorUser && vendorUser.liveLocation) ? vendorUser.liveLocation : null, // Crucial for rider assignment
-                    vendorImage: (vendorUser && vendorUser.profileImage) ? vendorUser.profileImage : null,
+                    vendorAddress: (vendorUser && (vendorUser.shopLocation?.address || vendorUser.address)) ? (vendorUser.shopLocation?.address || vendorUser.address) : '',
+                    vendorLocation: (vendorUser && (vendorUser.shopLocation || vendorUser.liveLocation)) ? (vendorUser.shopLocation || vendorUser.liveLocation) : null, // Crucial for rider assignment
+                    vendorImage: (vendorUser && (vendorUser.shopImage || vendorUser.profileImage)) ? (vendorUser.shopImage || vendorUser.profileImage) : null,
 
                     createdAt: admin.firestore.FieldValue.serverTimestamp(),
                     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
