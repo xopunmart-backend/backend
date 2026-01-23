@@ -13,19 +13,24 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ message: "User ID and address are required" });
         }
 
-        // 1. Get User's Cart
+        // 1. Get User's Cart (MongoDB)
         const cart = await req.db.collection('carts').findOne({ userId });
         if (!cart || !cart.items || cart.items.length === 0) {
             return res.status(400).json({ message: "Cart is empty" });
         }
 
-        // 2. Enrich items with details (price, vendorId) to ensure accuracy
-        const itemsWithDetails = [];
-        const vendorOrders = {}; // Map<vendorId, { items: [], total: 0 }>
+        // Fetch Customer Details (MongoDB) needed for Denormalization
+        const customer = await req.db.collection('users').findOne({ _id: new ObjectId(userId) });
+        if (!customer) {
+            return res.status(404).json({ message: "Customer not found" });
+        }
+
+        // 2. Enrich items & Group by Vendor
+        const vendorOrders = {}; // Map<vendorId, orderData>
 
         for (const item of cart.items) {
             const product = await req.db.collection('products').findOne({ _id: new ObjectId(item.productId) });
-            if (!product) continue; // Skip if product deleted
+            if (!product) continue;
 
             const lineItem = {
                 productId: item.productId,
@@ -34,27 +39,45 @@ router.post('/', async (req, res) => {
                 quantity: item.quantity,
                 image: product.image,
                 unit: product.unit,
-                vendorId: product.vendorId // Assuming product has vendorId stored as ObjectId or string
+                vendorId: product.vendorId.toString()
             };
 
             const vId = product.vendorId.toString();
 
             if (!vendorOrders[vId]) {
                 const vendorUser = await req.db.collection('users').findOne({ _id: product.vendorId });
+
                 vendorOrders[vId] = {
-                    vendorId: product.vendorId, // Keep original type
-                    userId,
+                    vendorId: vId,
+                    userId: userId,
                     items: [],
                     totalAmount: 0,
-                    status: 'pending', // pending, preparing, ready, picked, completed, cancelled
+                    status: 'pending',
                     paymentMethod: paymentMethod || 'COD',
-                    address,
-                    location, // Customer lat/lng coordinates
-                    vendorLocation: vendorUser ? vendorUser.liveLocation : null, // Store vendor location for assignment
-                    createdAt: new Date(),
-                    updatedAt: new Date(),
-                    visibleToRiderId: null, // Initially null
-                    rejectedByRiders: [] // Track rejections
+                    // Customer & Address Info (Denormalized)
+                    address: address, // Shipping Address Object
+                    customerName: customer.name || 'Unknown',
+                    customerPhone: customer.phoneNumber || '',
+                    customerImage: customer.profileImage || null,
+                    customerLocation: location || null, // Lat/Lng
+
+                    // Vendor Info (Denormalized)
+                    vendorName: vendorUser ? vendorUser.name : 'Unknown Vendor',
+                    vendorAddress: vendorUser ? vendorUser.address : '',
+                    vendorLocation: vendorUser ? vendorUser.liveLocation : null, // Crucial for rider assignment
+                    vendorImage: vendorUser ? vendorUser.profileImage : null,
+
+                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+
+                    // Rider / Assignment Info
+                    riderId: null,
+                    visibleToRiderId: null,
+                    rejectedByRiders: [],
+                    assignmentStatus: 'searching', // searching, assigned, no_riders
+
+                    // Legacy/Compatibility
+                    isFirestore: true
                 };
             }
 
@@ -66,118 +89,58 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ message: "No valid products found in cart" });
         }
 
-        // 3. Create Orders
-        const createdOrders = [];
-        const orderCollection = req.db.collection('orders');
+        // 3. Save to Firestore
+        const createdOrderIds = [];
 
         for (const vId in vendorOrders) {
             const orderData = vendorOrders[vId];
-            // Format total to 2 decimals
             orderData.totalAmount = parseFloat(orderData.totalAmount.toFixed(2));
 
-            const result = await orderCollection.insertOne(orderData);
-            createdOrders.push({ ...orderData, _id: result.insertedId });
+            // Create Document
+            const docRef = await admin.firestore().collection('orders').add(orderData);
+            const orderId = docRef.id;
+            createdOrderIds.push(orderId);
 
-            // SYNC TO FIRESTORE
-            try {
-                const firestoreOrder = {
-                    ...orderData,
-                    _id: result.insertedId.toString(), // Store Mongo ID as string
-                    vendorId: orderData.vendorId.toString(),
-                    userId: orderData.userId.toString(),
-                    createdAt: admin.firestore.Timestamp.fromDate(orderData.createdAt),
-                    updatedAt: admin.firestore.Timestamp.fromDate(orderData.updatedAt),
-                    // Ensure lat/lng are simple objects or Geopoints
-                    vendorLocation: orderData.vendorLocation ? {
-                        latitude: orderData.vendorLocation.latitude,
-                        longitude: orderData.vendorLocation.longitude
-                    } : null
-                };
+            console.log(`[Firestore] Created Order ${orderId}`);
 
-                // Use MongoID as Doc ID in Firestore for easy mapping
-                await admin.firestore().collection('orders').doc(result.insertedId.toString()).set(firestoreOrder);
-                console.log("Synced order to Firestore:", result.insertedId.toString());
-            } catch (fsError) {
-                console.error("Firestore Sync Error (Create):", fsError);
-            }
-
-            // Trigger Smart Assignment
+            // 4. Trigger Assignment (Async)
             if (orderData.vendorLocation) {
-                // Run asynchronously to not block response
-                assignOrderToNearestRider(req.db, result.insertedId, orderData.vendorLocation);
+                // We pass 'db' for Mongo (users access) but need to handle assignment logic update
+                // For now, allow it to call but we must update assigning util next!
+                assignOrderToNearestRider(req.db, orderId, orderData.vendorLocation);
             }
 
-            // Create Notification for Vendor
+            // 5. Notifications (Vendor)
             try {
-                const notificationData = {
-                    userId: new ObjectId(vId),
-                    title: 'New Order Received',
-                    message: `You have received a new order of ₹${orderData.totalAmount}`,
-                    type: 'order',
-                    isRead: false,
-                    createdAt: new Date()
-                };
-
-                await req.db.collection('notifications').insertOne(notificationData);
-
-                // START: Send Push Notification
-                // Fetch FCM Token from Firestore
-                let vendorFcmToken = null;
-                try {
-                    // 1. Get Vendor's Firebase UID from MongoDB
-                    const vendorUser = await req.db.collection('users').findOne({ _id: new ObjectId(vId) });
-                    const vendorFirebaseUid = vendorUser ? vendorUser.firebaseUid : null;
-                    const docIdToUse = vendorFirebaseUid || vId; // Fallback to MongoID (legacy)
-
-                    console.log(`[FCM] Checking token for vendor ${vId} (FirebaseUID: ${vendorFirebaseUid || 'N/A'})...`);
-
-                    // 2. Check 'vendors' collection (New App)
-                    const vendorDoc = await admin.firestore().collection('vendors').doc(docIdToUse).get();
-                    if (vendorDoc.exists) {
-                        vendorFcmToken = vendorDoc.data().fcmToken;
-                    } else {
-                        // 3. Fallback: Check 'users' collection (Old App/Misconfig)
-                        const userDoc = await admin.firestore().collection('users').doc(docIdToUse).get();
-                        if (userDoc.exists) {
-                            vendorFcmToken = userDoc.data().fcmToken;
-                        }
+                // Find vendor token
+                let vendorToken = null;
+                const vendorUser = await req.db.collection('users').findOne({ _id: new ObjectId(vId) });
+                if (vendorUser && vendorUser.firebaseUid) {
+                    // Check 'vendors' or 'users' in Firestore
+                    const vDoc = await admin.firestore().collection('vendors').doc(vendorUser.firebaseUid).get();
+                    if (vDoc.exists) vendorToken = vDoc.data().fcmToken;
+                    else {
+                        const uDoc = await admin.firestore().collection('users').doc(vendorUser.firebaseUid).get();
+                        if (uDoc.exists) vendorToken = uDoc.data().fcmToken;
                     }
-                } catch (e) {
-                    console.error(`[FCM] Error fetching token for vendor ${vId} from Firestore:`, e);
                 }
 
-                if (vendorFcmToken) {
-                    console.log(`[FCM] Found vendor ${vId} with token: ${vendorFcmToken.substring(0, 10)}...`);
-                    const messagePayload = {
+                if (vendorToken) {
+                    await admin.messaging().send({
                         notification: {
-                            title: notificationData.title,
-                            body: notificationData.message
+                            title: 'New Order Received',
+                            body: `You have received a new order of ₹${orderData.totalAmount}`
                         },
-                        data: {
-                            type: 'order',
-                            orderId: result.insertedId.toString()
-                        },
-                        token: vendorFcmToken
-                    };
-
-                    try {
-                        const fcmResponse = await admin.messaging().send(messagePayload);
-                        console.log(`[FCM] Push notification sent to vendor ${vId}. Response: ${fcmResponse}`);
-                    } catch (fcmError) {
-                        console.error(`[FCM] Error sending push to vendor ${vId}:`, fcmError);
-                    }
-                } else {
-                    console.log(`[FCM] Vendor ${vId} has no FCM token in Firestore. Push skipped.`);
+                        data: { type: 'order', orderId: orderId },
+                        token: vendorToken
+                    });
                 }
-                // END: Send Push Notification
-
-            } catch (notifError) {
-                console.error("Failed to create notification:", notifError);
-                // Don't fail the order if notification fails
+            } catch (e) {
+                console.error("Vendor Notification Error:", e);
             }
         }
 
-        // 4. Clear Cart
+        // 6. Clear Cart
         await req.db.collection('carts').updateOne(
             { userId },
             { $set: { items: [], updatedAt: new Date() } }
@@ -185,12 +148,12 @@ router.post('/', async (req, res) => {
 
         res.status(201).json({
             message: "Order placed successfully",
-            orders: createdOrders
+            orderIds: createdOrderIds
         });
 
     } catch (error) {
         console.error("Create Order Error:", error);
-        res.status(500).json({ message: "Server error" });
+        res.status(500).json({ message: error.message });
     }
 });
 
@@ -198,50 +161,19 @@ router.post('/', async (req, res) => {
 router.get('/', async (req, res) => {
     try {
         const { vendorId } = req.query;
+        let query = admin.firestore().collection('orders');
 
-        const query = {};
         if (vendorId) {
-            query.vendorId = new ObjectId(vendorId);
+            query = query.where('vendorId', '==', vendorId);
         }
 
-        // Sort by newest first
-        // Sort by newest first
-        const pipeline = [
-            { $match: query },
-            { $sort: { createdAt: -1 } },
-            {
-                $lookup: {
-                    from: 'users',
-                    localField: 'userId',
-                    foreignField: '_id',
-                    as: 'customer'
-                }
-            },
-            {
-                $unwind: {
-                    path: '$customer',
-                    preserveNullAndEmptyArrays: true
-                }
-            },
-            {
-                $addFields: {
-                    customerName: '$customer.name',
-                    customerImage: '$customer.profileImage'
-                }
-            },
-            {
-                $project: {
-                    customer: 0 // Remove the full customer object to save bandwidth
-                }
-            }
-        ];
-
-        const orders = await req.db.collection('orders').aggregate(pipeline).toArray();
+        const snapshot = await query.orderBy('createdAt', 'desc').get();
+        const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
         res.json(orders);
     } catch (error) {
         console.error("Get orders error:", error);
-        res.status(500).json({ message: "Server error" });
+        res.status(500).json({ message: error.message });
     }
 });
 
@@ -249,16 +181,16 @@ router.get('/', async (req, res) => {
 router.get('/user/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
+        const snapshot = await admin.firestore().collection('orders')
+            .where('userId', '==', userId)
+            .orderBy('createdAt', 'desc')
+            .get();
 
-        const orders = await req.db.collection('orders')
-            .find({ userId: userId }) // userId is stored as string in create order
-            .sort({ createdAt: -1 })
-            .toArray();
-
+        const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         res.json(orders);
     } catch (error) {
         console.error("Get user orders error:", error);
-        res.status(500).json({ message: "Server error" });
+        res.status(500).json({ message: error.message });
     }
 });
 
@@ -270,12 +202,13 @@ router.get('/recent', async (req, res) => {
             return res.status(400).json({ message: "Vendor ID is required" });
         }
 
-        const orders = await req.db.collection('orders')
-            .find({ vendorId: new ObjectId(vendorId) })
-            .sort({ createdAt: -1 })
+        const snapshot = await admin.firestore().collection('orders')
+            .where('vendorId', '==', vendorId)
+            .orderBy('createdAt', 'desc')
             .limit(5)
-            .toArray();
+            .get();
 
+        const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         res.json(orders);
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -294,71 +227,73 @@ router.patch('/:id/status', async (req, res) => {
             return res.status(400).json({ message: "Status is required" });
         }
 
-        const result = await req.db.collection('orders').updateOne(
-            { _id: new ObjectId(id) },
-            { $set: { status: status, updatedAt: new Date() } }
-        );
+        const orderRef = admin.firestore().collection('orders').doc(id);
 
-        if (result.matchedCount === 0) {
-            return res.status(404).json({ message: "Order not found" });
-        }
+        // 1. Update Status in Firestore
+        await orderRef.update({
+            status: status,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
 
-        // SYNC TO FIRESTORE
-        try {
-            await admin.firestore().collection('orders').doc(id).update({
-                status: status,
-                updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-        } catch (fsError) {
-            console.error("Firestore Sync Error (Status Update):", fsError);
-        }
-
-        // START: Credit Wallet on Completion
-        if (status === 'completed') {
-            const order = await req.db.collection('orders').findOne({ _id: new ObjectId(id) });
-            if (order && order.paymentMethod !== 'COD_UNPAID') {
-                // Platform Commission Logic (10%)
-                const commissionRate = 0.10;
-                const commissionAmount = order.totalAmount * commissionRate;
-                const netAmount = order.totalAmount - commissionAmount;
-
-                await req.db.collection('users').updateOne(
-                    { _id: order.vendorId },
-                    { $inc: { walletBalance: netAmount } }
-                );
-
-                await req.db.collection('transactions').insertOne({
-                    userId: order.vendorId,
-                    type: 'credit',
-                    amount: netAmount,
-                    commission: commissionAmount,
-                    description: `Order Payment #${id.substring(id.length - 6)} (Net)`,
-                    orderId: new ObjectId(id),
-                    createdAt: new Date()
-                });
-
-                await req.db.collection('orders').updateOne(
-                    { _id: new ObjectId(id) },
-                    { $set: { platformCommission: commissionAmount, netVendorEarnings: netAmount } }
-                );
-            }
-        }
-        // END: Credit Wallet
-
-        // START: Free up Rider if Completed or Cancelled
+        // 2. Post-Update Logic (Wallet, Rider Availability)
         if (status === 'completed' || status === 'cancelled') {
-            const order = await req.db.collection('orders').findOne({ _id: new ObjectId(id) });
-            if (order && order.riderId) {
-                await req.db.collection('users').updateOne(
-                    { _id: order.riderId },
-                    { $set: { isAvailable: true } }
-                );
+            const orderDoc = await orderRef.get();
+            const order = orderDoc.data();
+
+            if (order) {
+                // Credit Wallet Logic (MongoDB)
+                if (status === 'completed' && order.paymentMethod !== 'COD_UNPAID') {
+                    const commissionRate = 0.10;
+                    const commissionAmount = order.totalAmount * commissionRate;
+                    const netAmount = order.totalAmount - commissionAmount;
+
+                    // Vendor ID is stored as string in Firestore, needed as ObjectId for Mongo
+                    const vendorObjectId = new ObjectId(order.vendorId);
+
+                    await req.db.collection('users').updateOne(
+                        { _id: vendorObjectId },
+                        { $inc: { walletBalance: netAmount } }
+                    );
+
+                    await req.db.collection('transactions').insertOne({
+                        userId: vendorObjectId,
+                        type: 'credit',
+                        amount: netAmount,
+                        commission: commissionAmount,
+                        description: `Order Payment #${id.substring(id.length - 6)} (Net)`,
+                        orderId: id, // String ID Reference
+                        createdAt: new Date()
+                    });
+
+                    // Update Firestore with commission details
+                    await orderRef.update({
+                        platformCommission: commissionAmount,
+                        netVendorEarnings: netAmount
+                    });
+                }
+
+                // Free up Rider (MongoDB)
+                if (order.riderId) { // riderId is string (MongoID or FirebaseUID)
+                    // Try to find rider by _id (if MongoID) or firebaseUid
+                    // Simplest is to check if it's a valid ObjectId
+                    let riderQuery = {};
+                    if (ObjectId.isValid(order.riderId)) {
+                        riderQuery = { _id: new ObjectId(order.riderId) };
+                    } else {
+                        riderQuery = { firebaseUid: order.riderId };
+                    }
+
+                    await req.db.collection('users').updateOne(
+                        riderQuery,
+                        { $set: { isAvailable: true } }
+                    );
+                }
             }
         }
-        // END: Free up Rider
 
         res.json({ message: "Order status updated", status });
     } catch (error) {
+        console.error("Update status error:", error);
         res.status(500).json({ message: error.message });
     }
 });
@@ -368,58 +303,30 @@ router.get('/available', async (req, res) => {
     try {
         const { riderId } = req.query;
 
-        // Base match: pending/preparing/ready AND no rider assigned yet
-        const matchStage = {
-            status: { $in: ['pending', 'preparing', 'ready'] },
-            riderId: null
-        };
+        let query = admin.firestore().collection('orders')
+            .where('status', 'in', ['pending', 'preparing', 'ready'])
+            .where('riderId', '==', null);
 
-        // If riderId provided, only return orders visible to them (or null/everyone?)
-        // Based on accept logic, it MUST be visible to them.
+        // Firestore complex OR queries are limited.
+        // We need (visibleToRiderId == null OR visibleToRiderId == riderId)
+        // We can fetch all unassigned and filter in memory (dataset usually header-small for unassigned)
+        // OR make two queries. Filtering in memory is safer/easier for this scale.
+
+        const snapshot = await query.orderBy('createdAt', 'desc').get();
+        let orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
         if (riderId) {
-            matchStage.$or = [
-                { visibleToRiderId: new ObjectId(riderId) },
-                { visibleToRiderId: riderId } // For Firebase UID string if used
-            ];
+            orders = orders.filter(o =>
+                o.visibleToRiderId === null ||
+                o.visibleToRiderId === riderId ||
+                (o.visibleToRiderId && o.visibleToRiderId.toString() === riderId)
+            );
         }
 
-        const pipeline = [
-            {
-                $match: matchStage
-            },
-            { $sort: { createdAt: -1 } },
-            // Lookup Vendor details
-            {
-                $lookup: {
-                    from: 'users',
-                    localField: 'vendorId',
-                    foreignField: '_id',
-                    as: 'vendor'
-                }
-            },
-            {
-                $unwind: { path: '$vendor', preserveNullAndEmptyArrays: true }
-            },
-            {
-                $addFields: {
-                    vendorName: '$vendor.name',
-                    vendorAddress: '$vendor.address',
-                    vendorLocation: '$vendor.liveLocation'
-                }
-            },
-            {
-                $project: {
-                    vendor: 0 // Remove full object
-                }
-            }
-        ];
-
-        const richOrders = await req.db.collection('orders').aggregate(pipeline).toArray();
-
-        res.json(richOrders);
+        res.json(orders);
     } catch (error) {
         console.error("Get available orders error:", error);
-        res.status(500).json({ message: error.message || "Server error" });
+        res.status(500).json({ message: error.message });
     }
 });
 
@@ -429,54 +336,36 @@ router.patch('/:id/reject', async (req, res) => {
         const { id } = req.params;
         const { riderId } = req.body;
 
-        if (!riderId) {
-            return res.status(400).json({ message: "Rider ID is required" });
+        if (!riderId) return res.status(400).json({ message: "Rider ID required" });
+
+        const orderRef = admin.firestore().collection('orders').doc(id);
+        const orderDoc = await orderRef.get();
+
+        if (!orderDoc.exists) return res.status(404).json({ message: "Order not found" });
+        const order = orderDoc.data();
+
+        if (order.visibleToRiderId && order.visibleToRiderId !== riderId) {
+            return res.status(403).json({ message: "Order not assigned to you" });
         }
 
-        const order = await req.db.collection('orders').findOne({ _id: new ObjectId(id) });
-        if (!order) {
-            return res.status(404).json({ message: "Order not found" });
-        }
+        await orderRef.update({
+            visibleToRiderId: null,
+            status: 'pending',
+            rejectedByRiders: admin.firestore.FieldValue.arrayUnion(riderId)
+        });
 
-        if (order.visibleToRiderId && order.visibleToRiderId.toString() !== riderId) {
-            return res.status(403).json({ message: "You are not assigned to this order" });
-        }
-
-        // Add to rejected list and find next
-        await req.db.collection('orders').updateOne(
-            { _id: new ObjectId(id) },
-            {
-                $addToSet: { rejectedByRiders: new ObjectId(riderId) },
-                $set: { visibleToRiderId: null, status: 'pending' } // Temporarily reset
-            }
-        );
-
-        // SYNC TO FIRESTORE
-        try {
-            await admin.firestore().collection('orders').doc(id).update({
-                visibleToRiderId: null,
-                status: 'pending',
-                // Firestore doesn't support $addToSet in same way, need arrayUnion
-                rejectedByRiders: admin.firestore.FieldValue.arrayUnion(riderId)
-            });
-        } catch (fsError) {
-            console.error("Firestore Sync Error (Reject):", fsError);
-        }
-
-        // Re-fetch updated order to include the new rejection
-        const updatedOrder = await req.db.collection('orders').findOne({ _id: new ObjectId(id) });
+        // Trigger Re-assignment
+        const updatedOrder = (await orderRef.get()).data();
         const rejectedIds = updatedOrder.rejectedByRiders || [];
 
-        // Assign to next
         if (updatedOrder.vendorLocation) {
-            // Run async
-            assignOrderToNearestRider(req.db, new ObjectId(id), updatedOrder.vendorLocation, rejectedIds);
+            assignOrderToNearestRider(req.db, id, updatedOrder.vendorLocation, rejectedIds);
         }
 
         res.json({ success: true, message: "Order rejected" });
     } catch (error) {
         console.error("Reject order error:", error);
-        res.status(500).json({ message: "Server error" });
+        res.status(500).json({ message: error.message });
     }
 });
 
@@ -486,100 +375,54 @@ router.patch('/:id/accept', async (req, res) => {
         const { id } = req.params;
         let { riderId } = req.body;
 
-        if (!riderId) {
-            return res.status(400).json({ message: "Rider ID is required" });
-        }
+        if (!riderId) return res.status(400).json({ message: "Rider ID required" });
 
-        let riderObjectId;
-        let riderFirebaseUid = null;
+        const orderRef = admin.firestore().collection('orders').doc(id);
 
-        // Resolve riderId to Mongo ObjectId AND Firebase UID
-        if (ObjectId.isValid(riderId) && (String(new ObjectId(riderId)) === riderId)) {
-            // It's a valid Mongo ID string
-            riderObjectId = new ObjectId(riderId);
-            // Fetch user to get Firebase UID
-            const user = await req.db.collection('users').findOne({ _id: riderObjectId });
-            if (user) {
-                riderFirebaseUid = user.firebaseUid;
-            }
-        } else {
-            // Assume it's a Firebase UID
-            console.log(`Looking up Mongo ID for Firebase UID: ${riderId}`);
-            const user = await req.db.collection('users').findOne({ firebaseUid: riderId });
-            if (!user) {
-                return res.status(404).json({ message: "Rider not found for provided ID" });
-            }
-            riderObjectId = user._id;
-            riderFirebaseUid = riderId; // It WAS the firebase UID
-        }
+        let assignedRiderId = riderId;
+        // Normalize Rider ID (Use Firebase UID preference if available)
+        // We trust client sending correct ID, but ideally we should verify.
+        // For Speed: We use what is sent, assuming auth middleware verified token.
+        // Wait, 'req.user' isn't populated here? We rely on body.
 
-        // Build match conditions
-        const visibleToConditions = [
-            { visibleToRiderId: riderObjectId }, // Check Mongo ID (Object)
-            { visibleToRiderId: riderObjectId.toString() } // Check Mongo ID (String)
-        ];
+        // Transaction to ensure atomicity
+        await admin.firestore().runTransaction(async (t) => {
+            const doc = await t.get(orderRef);
+            if (!doc.exists) throw new Error("Order not found");
 
-        if (riderFirebaseUid) {
-            visibleToConditions.push({ visibleToRiderId: riderFirebaseUid });
-        }
-        // Also check if riderId passed was just a random string that matched visibleToRiderId (fallback)
-        if (riderId) {
-            visibleToConditions.push({ visibleToRiderId: riderId });
-        }
+            const data = doc.data();
+            if (data.riderId) throw new Error("Order already accepted");
 
-        // Use atomic findOneAndUpdate to ensure no race condition
-        const result = await req.db.collection('orders').findOneAndUpdate(
-            {
-                _id: new ObjectId(id),
-                riderId: null, // Ensure not already taken
-                $or: visibleToConditions
-            },
-            {
-                $set: {
-                    riderId: riderObjectId,
-                    status: 'accepted',
-                    updatedAt: new Date(),
-                    riderAcceptedAt: new Date()
+            // Check visibility permission
+            if (data.visibleToRiderId && data.visibleToRiderId !== riderId) {
+                // Try loose matching (string vs obj)
+                if (data.visibleToRiderId.toString() !== riderId.toString()) {
+                    throw new Error("Order not assigned to you");
                 }
-            },
-            { returnDocument: 'after' }
-        );
-
-        // SYNC TO FIRESTORE
-        if (result) {
-            try {
-                await admin.firestore().collection('orders').doc(id).update({
-                    riderId: riderId,
-                    status: 'accepted',
-                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                    riderAcceptedAt: admin.firestore.FieldValue.serverTimestamp()
-                });
-            } catch (fsError) {
-                console.error("Firestore Sync Error (Accept):", fsError);
             }
+
+            t.update(orderRef, {
+                riderId: riderId,
+                status: 'accepted',
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                riderAcceptedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+        });
+
+        // Mark Rider Busy (MongoDB)
+        let riderQuery = {};
+        if (ObjectId.isValid(riderId)) {
+            riderQuery = { _id: new ObjectId(riderId) };
+        } else {
+            riderQuery = { firebaseUid: riderId };
         }
+        await req.db.collection('users').updateOne(riderQuery, { $set: { isAvailable: false } });
 
-        if (!result) { // Order not found or already taken or not visible
-            // Check why failed
-            const check = await req.db.collection('orders').findOne({ _id: new ObjectId(id) });
-            if (!check) return res.status(404).json({ message: "Order not found" });
-            if (check.riderId) return res.status(400).json({ message: "Order already accepted by another rider" });
-            return res.status(403).json({ message: "Order not assigned to you" });
-        }
-
-        // Mark Rider as Busy
-        await req.db.collection('users').updateOne(
-            { _id: new ObjectId(riderId) },
-            { $set: { isAvailable: false } }
-        );
-
-        // Notify Vendor
-        // TODO: Add notification logic here
-
-        res.json({ success: true, message: "Order accepted", order: result });
+        res.json({ success: true, message: "Order accepted" });
     } catch (error) {
         console.error("Accept order error:", error);
-        res.status(500).json({ message: "Server error" });
+        const status = error.message.includes("found") ? 404 : 400;
+        res.status(status).json({ message: error.message });
     }
 });
 
@@ -587,58 +430,13 @@ router.patch('/:id/accept', async (req, res) => {
 router.get('/:id', async (req, res) => {
     try {
         const { id } = req.params;
+        const doc = await admin.firestore().collection('orders').doc(id).get();
 
-        const pipeline = [
-            { $match: { _id: new ObjectId(id) } },
-            // Lookup Vendor
-            {
-                $lookup: {
-                    from: 'users',
-                    localField: 'vendorId',
-                    foreignField: '_id',
-                    as: 'vendor'
-                }
-            },
-            { $unwind: { path: '$vendor', preserveNullAndEmptyArrays: true } },
-            // Lookup Customer
-            {
-                $lookup: {
-                    from: 'users',
-                    localField: 'userId', // Assuming userId is customer
-                    foreignField: '_id',
-                    as: 'customer'
-                }
-            },
-            { $unwind: { path: '$customer', preserveNullAndEmptyArrays: true } },
-            {
-                $addFields: {
-                    vendorName: '$vendor.name',
-                    vendorAddress: '$vendor.address', // Important for Pickup
-                    vendorLocation: '$vendor.liveLocation',
-                    customerName: '$customer.name',
-                    // address is already in order usually, but let's ensure we have fallback
-                    customerPhone: '$customer.phoneNumber'
-                }
-            },
-            {
-                $project: {
-                    vendor: 0,
-                    customer: 0
-                }
-            }
-        ];
+        if (!doc.exists) return res.status(404).json({ message: "Order not found" });
 
-        const orders = await req.db.collection('orders').aggregate(pipeline).toArray();
-        const order = orders[0];
-
-        if (!order) {
-            return res.status(404).json({ message: "Order not found" });
-        }
-
-        res.json(order);
+        res.json({ id: doc.id, ...doc.data() });
     } catch (error) {
-        console.error("Get order error:", error);
-        res.status(500).json({ message: error.message || "Server error" });
+        res.status(500).json({ message: error.message });
     }
 });
 

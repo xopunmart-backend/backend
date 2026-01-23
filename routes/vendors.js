@@ -35,33 +35,34 @@ router.get('/:id', async (req, res) => {
             return res.status(404).json({ message: "Vendor not found" });
         }
 
-        // 2. Fetch Order Stats
-        const orderStats = await req.db.collection('orders').aggregate([
-            { $match: { vendorId: vId } },
-            {
-                $group: {
-                    _id: null,
-                    totalSales: {
-                        $sum: {
-                            $cond: [{ $ne: ["$status", "cancelled"] }, "$totalAmount", 0]
-                        }
-                    },
-                    totalOrders: { $sum: 1 },
-                    pendingOrders: {
-                        $sum: {
-                            $cond: [{ $eq: ["$status", "pending"] }, 1, 0]
-                        }
-                    },
-                    completedOrders: {
-                        $sum: {
-                            $cond: [{ $eq: ["$status", "delivered"] }, 1, 0]
-                        }
-                    }
-                }
-            }
-        ]).toArray();
+        // 2. Fetch Order Stats (Firestore)
+        const ordersSnapshot = await admin.firestore().collection('orders')
+            .where('vendorId', '==', id)
+            .get();
 
-        const stats = orderStats.length > 0 ? orderStats[0] : { totalSales: 0, totalOrders: 0, pendingOrders: 0, completedOrders: 0 };
+        let totalSales = 0;
+        let totalOrders = 0;
+        let pendingOrders = 0;
+        let completedOrders = 0;
+
+        ordersSnapshot.forEach(doc => {
+            const data = doc.data();
+            totalOrders++;
+
+            if (data.status !== 'cancelled') {
+                totalSales += (data.totalAmount || 0);
+            }
+
+            if (data.status === 'pending') {
+                pendingOrders++;
+            }
+
+            if (data.status === 'delivered' || data.status === 'completed') {
+                completedOrders++;
+            }
+        });
+
+        const stats = { totalSales, totalOrders, pendingOrders, completedOrders };
 
         // 3. Fetch Recent Products
         const products = await req.db.collection('products')

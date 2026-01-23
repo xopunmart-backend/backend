@@ -4,8 +4,8 @@ const { calculateDistance } = require('../utils/geo');
 
 /**
  * Assigns a specific order to the nearest available rider.
- * @param {Db} db - Mongo Database instance
- * @param {ObjectId} orderId - Order ID to assign
+ * @param {Db} db - Mongo Database instance (for Riders)
+ * @param {string} orderId - Order ID to assign (Firestore Doc ID)
  * @param {Object} vendorLocation - { latitude, longitude }
  * @param {Array} excludedRiderIds - List of rider IDs to skip (e.g. rejected)
  */
@@ -13,12 +13,15 @@ async function assignOrderToNearestRider(db, orderId, vendorLocation, excludedRi
     try {
         console.log(`Finding rider for order ${orderId} near`, vendorLocation);
 
-        // 1. Find all online and available riders
+        // 1. Find all online and available riders (Keep MongoDB for now as Users are there)
         const riders = await db.collection('users').find({
             role: 'rider',
             isOnline: true,
             isAvailable: true,
-            _id: { $nin: excludedRiderIds.map(id => new ObjectId(id)) }
+            // Exclude rejected riders (Handle both ObjectId and String)
+            _id: {
+                $nin: excludedRiderIds.map(id => ObjectId.isValid(id) ? new ObjectId(id) : id)
+            }
         }).toArray();
 
         // 2. Filter riders with valid location
@@ -26,18 +29,13 @@ async function assignOrderToNearestRider(db, orderId, vendorLocation, excludedRi
 
         if (validRiders.length === 0) {
             console.log("No available riders found.");
-            // Reset visibleToRiderId if previously set, or keep null
-            await db.collection('orders').updateOne(
-                { _id: new ObjectId(orderId) },
-                {
-                    $set: {
-                        visibleToRiderId: null,
-                        status: 'pending', // Revert to pending
-                        assignmentStatus: 'no_riders_available',
-                        updatedAt: new Date()
-                    }
-                }
-            );
+            // Update Firestore Order directly
+            await admin.firestore().collection('orders').doc(orderId.toString()).update({
+                visibleToRiderId: null,
+                status: 'pending',
+                assignmentStatus: 'no_riders_available',
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
             return null;
         }
 
@@ -52,34 +50,15 @@ async function assignOrderToNearestRider(db, orderId, vendorLocation, excludedRi
         const nearestRider = ridersWithDistance[0];
 
         // 5. Assign
-        // CRITICAL: Prefer Firebase UID for Firestore Rules compatibility.
-        // Fallback to MongoID if firebaseUid not set (but rules will fail).
+        // Prefer Firebase UID
         const assignedId = nearestRider.firebaseUid || nearestRider._id.toString();
 
-        const updateDoc = {
+        await admin.firestore().collection('orders').doc(orderId.toString()).update({
             visibleToRiderId: assignedId,
             status: 'requesting_rider',
             assignmentStatus: 'assigned',
-            updatedAt: new Date()
-        };
-
-        await db.collection('orders').updateOne(
-            { _id: new ObjectId(orderId) },
-            { $set: updateDoc }
-        );
-
-        // SYNC TO FIRESTORE
-        try {
-            await admin.firestore().collection('orders').doc(orderId.toString()).update({
-                visibleToRiderId: assignedId,
-                status: 'requesting_rider',
-                assignmentStatus: 'assigned',
-                updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            });
-            console.log("Synced assignment to Firestore:", orderId.toString());
-        } catch (fsError) {
-            console.error("Firestore Sync Error (Assign):", fsError);
-        }
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
 
         console.log(`Assigned order ${orderId} to rider ${nearestRider._id} (${nearestRider.name}) at ${nearestRider.distance}m`);
 
@@ -90,6 +69,10 @@ async function assignOrderToNearestRider(db, orderId, vendorLocation, excludedRi
             const riderDoc = await admin.firestore().collection('riders').doc(assignedId).get();
             if (riderDoc.exists) {
                 riderToken = riderDoc.data().fcmToken;
+            } else {
+                // Fallback to 'users' collection if not in riders
+                const userDoc = await admin.firestore().collection('users').doc(assignedId).get();
+                if (userDoc.exists) riderToken = userDoc.data().fcmToken;
             }
 
             if (riderToken) {
@@ -100,14 +83,14 @@ async function assignOrderToNearestRider(db, orderId, vendorLocation, excludedRi
                     },
                     data: {
                         type: "order_assigned",
-                        orderId: orderId.toString()
+                        orderId: orderId.toString() // Firestore ID is string
                     },
                     token: riderToken
                 };
                 await admin.messaging().send(message);
                 console.log(`[FCM] Sent assignment notification to rider ${assignedId}`);
             } else {
-                console.log(`[FCM] Rider ${assignedId} has no fcmToken in Firestore (riders).`);
+                console.log(`[FCM] Rider ${assignedId} has no fcmToken.`);
             }
         } catch (notifErr) {
             console.error("[FCM] Error sending rider notification:", notifErr);
@@ -128,21 +111,24 @@ async function assignOrderToNearestRider(db, orderId, vendorLocation, excludedRi
 async function checkAndAssignPendingOrders(db) {
     try {
         console.log("Checking for pending orders to assign...");
-        // Find orders that are waiting for assignment
-        const pendingOrders = await db.collection('orders').find({
-            status: { $in: ['pending', 'preparing', 'ready'] },
-            riderId: null,
-            visibleToRiderId: null // Not currently offered to anyone
-        }).toArray();
+
+        // Find orders that are waiting for assignment in FIRESTORE
+        // status IN [pending, preparing, ready] AND riderId == null AND visibleToRiderId == null
+        const snapshot = await admin.firestore().collection('orders')
+            .where('status', 'in', ['pending', 'preparing', 'ready'])
+            .where('riderId', '==', null)
+            .where('visibleToRiderId', '==', null)
+            .get();
+
+        const pendingOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
         console.log(`Found ${pendingOrders.length} pending orders.`);
 
         for (const order of pendingOrders) {
             if (order.vendorLocation) {
-                // Determine excluded riders (rejected)
                 const excluded = order.rejectedByRiders || [];
-                // Run assignment (await loop to not overwhelm check, though parallel is okay too)
-                await assignOrderToNearestRider(db, order._id, order.vendorLocation, excluded);
+                // Run assignment with Firestore Doc ID
+                await assignOrderToNearestRider(db, order.id, order.vendorLocation, excluded);
             }
         }
     } catch (error) {
