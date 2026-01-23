@@ -9,6 +9,7 @@ try {
     admin.initializeApp({
         credential: admin.credential.cert(serviceAccount)
     });
+    admin.firestore().settings({ ignoreUndefinedProperties: true });
     console.log("Firebase Admin initialized with serviceAccountKey.json");
 } catch (error) {
     // Option 2: Fallback to GOOGLE_APPLICATION_CREDENTIALS or default env vars
@@ -16,6 +17,7 @@ try {
         admin.initializeApp({
             credential: admin.credential.applicationDefault()
         });
+        admin.firestore().settings({ ignoreUndefinedProperties: true });
         console.log("Firebase Admin initialized with GOOGLE_APPLICATION_CREDENTIALS");
     } else {
         // If no credentials found, initialize anyway (might fail on send) but prevent crash
