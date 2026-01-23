@@ -47,13 +47,21 @@ const authenticateToken = async (req, res, next) => {
             return next();
         } else {
             console.log("User NOT found in MongoDB for UID:", uid);
+            return res.status(403).json({
+                message: "Authentication Failed: User not found in database",
+                debug: { uid, email: decodedToken.email }
+            });
         }
     } catch (e) {
         console.error("Auth Middleware Error:", e.message);
+        return res.status(403).json({
+            message: "Authentication Failed: Token verification error",
+            error: e.message
+        });
     }
 
-    console.log("Auth Failed: Returning 403");
-    return res.sendStatus(403);
+    // Should not reach here if logic above is correct, but safe fallback
+    return res.status(403).json({ message: "Authentication Failed: Unknown reason" });
 };
 
 const authorizeAdmin = (req, res, next) => {
