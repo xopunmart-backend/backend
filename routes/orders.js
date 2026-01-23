@@ -55,17 +55,18 @@ router.post('/', async (req, res) => {
                     status: 'pending',
                     paymentMethod: paymentMethod || 'COD',
                     // Customer & Address Info (Denormalized)
-                    address: address, // Shipping Address Object
-                    customerName: customer.name || 'Unknown',
-                    customerPhone: customer.phoneNumber || '',
-                    customerImage: customer.profileImage || null,
+                    // Customer & Address Info (Denormalized)
+                    address: address || {}, // Shipping Address Object
+                    customerName: (customer && customer.name) ? customer.name : 'Unknown',
+                    customerPhone: (customer && customer.phoneNumber) ? customer.phoneNumber : '',
+                    customerImage: (customer && customer.profileImage) ? customer.profileImage : null,
                     customerLocation: location || null, // Lat/Lng
 
                     // Vendor Info (Denormalized)
-                    vendorName: vendorUser ? vendorUser.name : 'Unknown Vendor',
-                    vendorAddress: vendorUser ? vendorUser.address : '',
-                    vendorLocation: vendorUser ? vendorUser.liveLocation : null, // Crucial for rider assignment
-                    vendorImage: vendorUser ? vendorUser.profileImage : null,
+                    vendorName: (vendorUser && vendorUser.name) ? vendorUser.name : 'Unknown Vendor',
+                    vendorAddress: (vendorUser && vendorUser.address) ? vendorUser.address : '',
+                    vendorLocation: (vendorUser && vendorUser.liveLocation) ? vendorUser.liveLocation : null, // Crucial for rider assignment
+                    vendorImage: (vendorUser && vendorUser.profileImage) ? vendorUser.profileImage : null,
 
                     createdAt: admin.firestore.FieldValue.serverTimestamp(),
                     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
