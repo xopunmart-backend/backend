@@ -399,7 +399,12 @@ router.patch('/:id/accept', async (req, res) => {
             if (data.visibleToRiderId && data.visibleToRiderId !== riderId) {
                 // Try loose matching (string vs obj)
                 if (data.visibleToRiderId.toString() !== riderId.toString()) {
-                    throw new Error("Order not assigned to you");
+                    // Secondary Check: The riderId might be MongoID, but visibleToRiderId is FirebaseUID
+                    // We need to verify if this MongoID belongs to the FirebaseUID
+                    const riderStart = await req.db.collection('users').findOne({ _id: new ObjectId(riderId) });
+                    if (!riderStart || riderStart.firebaseUid !== data.visibleToRiderId) {
+                        throw new Error("Order not assigned to you");
+                    }
                 }
             }
 
