@@ -21,8 +21,15 @@ const authenticateToken = async (req, res, next) => {
 
     // 2. Try Firebase ID Token
     try {
+        console.log("Verifying Firebase Token...");
         const decodedToken = await admin.auth().verifyIdToken(token);
         const uid = decodedToken.uid;
+        console.log("Token Verified. UID:", uid, "Email:", decodedToken.email);
+
+        if (!req.db) {
+            console.error("CRITICAL: req.db is undefined in auth middleware!");
+            return res.sendStatus(500);
+        }
 
         // Find user by firebaseUid or email
         const user = await req.db.collection('users').findOne({
@@ -30,6 +37,7 @@ const authenticateToken = async (req, res, next) => {
         });
 
         if (user) {
+            console.log("User found in MongoDB:", user._id);
             req.user = {
                 id: user._id,
                 email: user.email,
@@ -37,11 +45,14 @@ const authenticateToken = async (req, res, next) => {
                 firebaseUid: user.firebaseUid
             };
             return next();
+        } else {
+            console.log("User NOT found in MongoDB for UID:", uid);
         }
     } catch (e) {
-        // console.error("Auth Error:", e.message);
+        console.error("Auth Middleware Error:", e.message);
     }
 
+    console.log("Auth Failed: Returning 403");
     return res.sendStatus(403);
 };
 
