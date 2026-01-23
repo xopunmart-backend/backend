@@ -366,13 +366,26 @@ router.patch('/:id/status', async (req, res) => {
 // GET /api/orders/available - Get orders ready for pickup
 router.get('/available', async (req, res) => {
     try {
-        // Find orders that are 'pending', 'preparing', or 'ready' and have NO rider assigned
+        const { riderId } = req.query;
+
+        // Base match: pending/preparing/ready AND no rider assigned yet
+        const matchStage = {
+            status: { $in: ['pending', 'preparing', 'ready'] },
+            riderId: null
+        };
+
+        // If riderId provided, only return orders visible to them (or null/everyone?)
+        // Based on accept logic, it MUST be visible to them.
+        if (riderId) {
+            matchStage.$or = [
+                { visibleToRiderId: new ObjectId(riderId) },
+                { visibleToRiderId: riderId } // For Firebase UID string if used
+            ];
+        }
+
         const pipeline = [
             {
-                $match: {
-                    status: { $in: ['pending', 'preparing', 'ready'] },
-                    riderId: null // Matches null or missing field
-                }
+                $match: matchStage
             },
             { $sort: { createdAt: -1 } },
             // Lookup Vendor details
