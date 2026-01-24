@@ -190,6 +190,53 @@ router.get('/dashboard', async (req, res) => {
             position: o.vendorLocation
         }));
 
+        // 8. Vendor Stats Calculation
+        // Pending Payouts
+        const pendingPayouts = await db.collection('transactions').distinct('userId', {
+            type: 'debit',
+            status: 'pending'
+        });
+        const pendingPayoutVendors = pendingPayouts.length;
+
+        // Top Vendors
+        const vendorRevenueMap = {};
+        orders.forEach(o => {
+            // Robust extraction: Check root vendorId, or convert from ObjectId, or check items
+            let vId = o.vendorId ? o.vendorId.toString() : null;
+            if (!vId && o.items && o.items.length > 0 && o.items[0].vendorId) {
+                vId = o.items[0].vendorId.toString();
+            }
+
+            const status = (o.status || '').toLowerCase();
+
+            if (vId && status !== 'cancelled') {
+                if (!vendorRevenueMap[vId]) {
+                    vendorRevenueMap[vId] = { totalRevenue: 0, orderCount: 0, id: vId };
+                }
+                const amt = parseFloat(o.totalAmount);
+                vendorRevenueMap[vId].totalRevenue += (isNaN(amt) ? 0 : amt);
+                vendorRevenueMap[vId].orderCount++;
+            }
+        });
+
+        const sortedVendors = Object.values(vendorRevenueMap)
+            .sort((a, b) => b.totalRevenue - a.totalRevenue)
+            .slice(0, 5);
+
+        // Fetch Vendor Names
+        for (const v of sortedVendors) {
+            if (v.id) {
+                try {
+                    const vendorUser = await db.collection('users').findOne({ _id: new ObjectId(v.id) }, { projection: { name: 1 } });
+                    v.name = vendorUser ? vendorUser.name : 'Unknown Vendor';
+                } catch (err) {
+                    v.name = 'Unknown Vendor';
+                }
+            } else {
+                v.name = 'Unknown Vendor';
+            }
+        }
+
         res.json({
             totalRevenue,
             totalRevenueTrend: revenueTrend,
@@ -206,9 +253,14 @@ router.get('/dashboard', async (req, res) => {
                 onlineRiders,
                 busyRiders: activeDeliveries
             },
-            recentActivity // FILTERED activity
-        });
+            vendorStats: {
+                totalVendors: await db.collection('users').countDocuments({ role: 'vendor' }),
+                activeVendors,
+                pendingPayoutVendors,
+                topVendors: sortedVendors
+            },
 
+        });
     } catch (error) {
         console.error("Stats error:", error);
         res.status(500).json({ message: "Server error fetching stats" });
