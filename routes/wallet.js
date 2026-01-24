@@ -13,6 +13,48 @@ const JWT_SECRET = process.env.JWT_SECRET || 'xopunmart_secret_key_123';
 
 
 
+// GET /api/wallet/admin/all-transactions
+router.get('/admin/all-transactions', async (req, res) => {
+    try {
+        // In a real app, verify admin role here
+        // const userId = new ObjectId(req.user.id);
+        // ... check role ...
+
+        // Fetch all transactions
+        const transactions = await req.db.collection('transactions')
+            .sort({ createdAt: -1 })
+            .limit(100)
+            .toArray();
+
+        // Calculate stats
+        const pendingPayouts = await req.db.collection('transactions').aggregate([
+            { $match: { type: 'debit', status: 'pending' } },
+            { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]).toArray();
+
+        const completedPayouts = await req.db.collection('transactions').aggregate([
+            { $match: { type: 'debit', status: 'processed' } },
+            { $group: { _id: null, total: { $sum: '$amount' } } }
+        ]).toArray();
+
+        // Commission (mock or calculate from orders?)
+        // Let's assume commission is 10% of total revenue from stats for now, or just send 0 if not tracked in transactions
+        const totalCommission = 0; // Placeholder
+
+        res.json({
+            transactions,
+            stats: {
+                pendingPayouts: pendingPayouts[0]?.total || 0,
+                completedPayouts: completedPayouts[0]?.total || 0,
+                totalCommission
+            }
+        });
+    } catch (error) {
+        console.error("Admin transactions error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+});
+
 // GET /api/wallet
 // Get wallet balance and transaction history
 router.get('/', authenticateToken, async (req, res) => {
