@@ -62,6 +62,65 @@ router.patch('/:id/toggle', authenticateToken, async (req, res) => {
     }
 });
 
+
+// POST /api/coupons/apply
+router.post('/apply', authenticateToken, async (req, res) => {
+    try {
+        const { code, cartTotal } = req.body;
+
+        if (!code) {
+            return res.status(400).json({ message: "Coupon code is required" });
+        }
+
+        const coupon = await req.db.collection('coupons').findOne({
+            code: code.toUpperCase(),
+            isActive: true
+        });
+
+        if (!coupon) {
+            return res.status(404).json({ message: "Invalid or expired coupon" });
+        }
+
+        // Check expiry
+        if (coupon.expiryDate && new Date(coupon.expiryDate) < new Date()) {
+            return res.status(400).json({ message: "Coupon expired" });
+        }
+
+        // Check min order amount
+        if (coupon.minOrderAmount && cartTotal < coupon.minOrderAmount) {
+            return res.status(400).json({
+                message: `Minimum order amount of ₹${coupon.minOrderAmount} required`
+            });
+        }
+
+        // Calculate discount
+        let discountAmount = 0;
+        if (coupon.discountType === 'percentage') {
+            discountAmount = (cartTotal * coupon.discountValue) / 100;
+        } else {
+            discountAmount = coupon.discountValue;
+        }
+
+        // Cap discount if needed (optional logic, not implemented in schema yet)
+
+        // Ensure discount doesn't exceed total
+        if (discountAmount > cartTotal) {
+            discountAmount = cartTotal;
+        }
+
+        res.json({
+            success: true,
+            couponCode: coupon.code,
+            discountAmount: discountAmount,
+            message: "Coupon applied successfully"
+        });
+
+    } catch (error) {
+        console.error("Error applying coupon:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+});
+
 // DELETE /api/coupons/:id
 router.delete('/:id', authenticateToken, async (req, res) => {
     try {
