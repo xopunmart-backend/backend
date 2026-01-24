@@ -100,9 +100,17 @@ router.get('/dashboard', async (req, res) => {
             const amount = parseFloat(order.totalAmount || 0);
 
             // Date parsing
+            // Date parsing
             let date;
-            if (order.createdAt && order.createdAt.toDate) date = order.createdAt.toDate();
-            else if (order.createdAt) date = new Date(order.createdAt);
+            if (order.createdAt) {
+                if (typeof order.createdAt.toDate === 'function') {
+                    date = order.createdAt.toDate();
+                } else if (order.createdAt._seconds) {
+                    date = new Date(order.createdAt._seconds * 1000);
+                } else {
+                    date = new Date(order.createdAt);
+                }
+            }
 
             // Global Stats (Revenue, etc.) - keep calculating on ALL orders? 
             // The UI shows "Total Orders" and "Total Revenue" at top. These should likely be ALL TIME or based on separate logic not affected by the filter?
