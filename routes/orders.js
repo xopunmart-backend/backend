@@ -8,7 +8,7 @@ const { assignOrderToNearestRider } = require('../utils/orderAssignment');
 // POST /api/orders - Create new order(s) from cart
 router.post('/', async (req, res) => {
     try {
-        const { userId, address, paymentMethod, location } = req.body;
+        const { userId, address, paymentMethod, location, couponCode, discountAmount } = req.body;
 
         if (!userId || !address) {
             return res.status(400).json({ message: "User ID and address are required" });
@@ -28,6 +28,7 @@ router.post('/', async (req, res) => {
 
         // 2. Enrich items & Group by Vendor
         const vendorOrders = {}; // Map<vendorId, orderData>
+        let globalCartTotal = 0.0;
 
         for (const item of cart.items) {
             const product = await req.db.collection('products').findOne({ _id: new ObjectId(item.productId) });
@@ -56,7 +57,6 @@ router.post('/', async (req, res) => {
                     status: 'pending',
                     paymentMethod: paymentMethod || 'COD',
                     // Customer & Address Info (Denormalized)
-                    // Customer & Address Info (Denormalized)
                     address: address || {}, // Shipping Address Object
                     customerName: (customer && customer.name) ? customer.name : 'Unknown',
                     customerPhone: (customer && customer.phoneNumber) ? customer.phoneNumber : '',
@@ -84,26 +84,46 @@ router.post('/', async (req, res) => {
             }
 
             vendorOrders[vId].items.push(lineItem);
-            vendorOrders[vId].totalAmount += (lineItem.price * lineItem.quantity);
+            const lineTotal = lineItem.price * lineItem.quantity;
+            vendorOrders[vId].totalAmount += lineTotal;
+            globalCartTotal += lineTotal;
         }
 
         if (Object.keys(vendorOrders).length === 0) {
             return res.status(400).json({ message: "No valid products found in cart" });
         }
 
-        // 3. Save to Firestore
+        // 3. Apply Discount & Save to Firestore
         const createdOrderIds = [];
+        const totalDiscount = parseFloat(discountAmount) || 0;
 
         for (const vId in vendorOrders) {
             const orderData = vendorOrders[vId];
-            orderData.totalAmount = parseFloat(orderData.totalAmount.toFixed(2));
+
+            // Pro-rate discount
+            // (OrderTotal / GlobalTotal) * TotalDiscount
+            let orderDiscount = 0;
+            if (totalDiscount > 0 && globalCartTotal > 0) {
+                orderDiscount = (orderData.totalAmount / globalCartTotal) * totalDiscount;
+            }
+
+            // Ensure discount doesn't exceed total
+            if (orderDiscount > orderData.totalAmount) orderDiscount = orderData.totalAmount;
+
+            orderData.subtotal = parseFloat(orderData.totalAmount.toFixed(2)); // Store original
+            orderData.discount = parseFloat(orderDiscount.toFixed(2));
+            orderData.totalAmount = parseFloat((orderData.totalAmount - orderDiscount).toFixed(2));
+
+            if (couponCode) {
+                orderData.couponCode = couponCode;
+            }
 
             // Create Document
             const docRef = await admin.firestore().collection('orders').add(orderData);
             const orderId = docRef.id;
             createdOrderIds.push(orderId);
 
-            console.log(`[Firestore] Created Order ${orderId}`);
+            console.log(`[Firestore] Created Order ${orderId} | Sub: ${orderData.subtotal} | Disc: ${orderData.discount} | Final: ${orderData.totalAmount}`);
 
             // 4. Trigger Assignment (Async)
             if (orderData.vendorLocation) {
