@@ -58,6 +58,7 @@ app.use('/api/settings', require('./routes/settings'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/wallet', require('./routes/wallet'));
 app.use('/api/banners', require('./routes/banners'));
+app.use('/api/coupons', require('./routes/coupons'));
 
 app.get('/', (req, res) => {
     res.send('Backend Server is running');
