@@ -22,6 +22,7 @@ router.get('/admin/all-transactions', async (req, res) => {
 
         // Fetch all transactions
         const transactions = await req.db.collection('transactions')
+            .find({})
             .sort({ createdAt: -1 })
             .limit(100)
             .toArray();
