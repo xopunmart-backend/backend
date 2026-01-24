@@ -247,10 +247,39 @@ router.get('/dashboard', async (req, res) => {
 
         // 9. Today Orders
         let todayOrders = 0;
+        let todayRevenue = 0;
+        let weekRevenue = 0;
+
+        const weekStartForRevenue = new Date();
+        weekStartForRevenue.setDate(weekStartForRevenue.getDate() - 7);
+        weekStartForRevenue.setHours(0, 0, 0, 0);
+
         orders.forEach(o => {
-            const d = o.createdAt && o.createdAt.toDate ? o.createdAt.toDate() : new Date(o.createdAt);
-            if (isThisMonth(d) && d.getDate() === now.getDate()) {
-                todayOrders++;
+            // Date parsing (Robust)
+            let date;
+            if (o.createdAt) {
+                if (typeof o.createdAt.toDate === 'function') {
+                    date = o.createdAt.toDate();
+                } else if (o.createdAt._seconds) {
+                    date = new Date(o.createdAt._seconds * 1000);
+                } else {
+                    date = new Date(o.createdAt);
+                }
+            }
+
+            if (date) {
+                const amt = parseFloat(o.totalAmount || 0);
+
+                // Today Orders & Revenue
+                if (isThisMonth(date) && date.getDate() === now.getDate()) {
+                    todayOrders++;
+                    if (o.status !== 'cancelled') todayRevenue += amt;
+                }
+
+                // Week Revenue
+                if (o.status !== 'cancelled' && date >= weekStartForRevenue) {
+                    weekRevenue += amt;
+                }
             }
         });
 
@@ -267,6 +296,15 @@ router.get('/dashboard', async (req, res) => {
             orderCounts, // FILTERED counts
             dailyRevenue,
             cancelledLoss,
+            timeframeRevenue: {
+                today: todayRevenue,
+                week: weekRevenue,
+                month: thisMonthRevenue
+            },
+            revenueBreakdown: {
+                cod: 0, // Placeholder
+                online: 0 // Placeholder
+            },
             riderStats: {
                 onlineRiders,
                 busyRiders: activeDeliveries
