@@ -26,6 +26,13 @@ router.post('/', async (req, res) => {
             return res.status(404).json({ message: "Customer not found" });
         }
 
+        // Fetch Settings
+        const settingsDoc = await req.db.collection('settings').findOne({ type: 'global_config' });
+        const settings = settingsDoc ? settingsDoc.config : {};
+        const handlingFee = settings.handlingFee || 5;
+        const baseDeliveryFee = settings.deliveryCharge || 20;
+        const freeDeliveryThreshold = settings.freeDeliveryThreshold || 500;
+
         // 2. Enrich items & Group by Vendor
         const vendorOrders = {}; // Map<vendorId, orderData>
         let globalCartTotal = 0.0;
@@ -110,9 +117,17 @@ router.post('/', async (req, res) => {
             // Ensure discount doesn't exceed total
             if (orderDiscount > orderData.totalAmount) orderDiscount = orderData.totalAmount;
 
-            orderData.subtotal = parseFloat(orderData.totalAmount.toFixed(2)); // Store original
+            // Apply Fees
+            const deliveryFee = orderData.totalAmount >= freeDeliveryThreshold ? 0 : baseDeliveryFee;
+
+            orderData.itemsTotal = parseFloat(orderData.totalAmount.toFixed(2)); // Pure product total
+            orderData.subtotal = parseFloat((orderData.totalAmount + deliveryFee + handlingFee).toFixed(2)); // Subtotal with fees
+
+            orderData.deliveryFee = deliveryFee;
+            orderData.handlingFee = handlingFee;
+
             orderData.discount = parseFloat(orderDiscount.toFixed(2));
-            orderData.totalAmount = parseFloat((orderData.totalAmount - orderDiscount).toFixed(2));
+            orderData.totalAmount = parseFloat((orderData.subtotal - orderDiscount).toFixed(2));
 
             if (couponCode) {
                 orderData.couponCode = couponCode;

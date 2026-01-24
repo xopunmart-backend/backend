@@ -17,7 +17,11 @@ router.get('/', async (req, res) => {
                     radiusKm: 5,
                     baseDeliveryFee: 40,
                     freeDeliveryThreshold: 500
-                }]
+                }],
+                handlingFee: 5,
+                deliveryCharge: 20,
+                freeDeliveryThreshold: 500,
+                freeDeliveryFirstXOrders: 0
             });
         }
 
