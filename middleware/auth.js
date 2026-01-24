@@ -10,6 +10,17 @@ const authenticateToken = async (req, res, next) => {
 
     if (!token) return res.sendStatus(401);
 
+    // X. Dev Bypass
+    if (token === 'mock_token') {
+        req.user = {
+            id: '507f1f77bcf86cd799439011', // Dummy ObjectId
+            email: 'admin@xopunmart.com',
+            role: 'admin'
+        };
+        console.log("Mock Token used. Bypassing auth.");
+        return next();
+    }
+
     // 1. Try Custom JWT (Legacy/Backend Generated)
     try {
         const user = jwt.verify(token, JWT_SECRET);
