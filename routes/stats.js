@@ -249,6 +249,8 @@ router.get('/dashboard', async (req, res) => {
         let todayOrders = 0;
         let todayRevenue = 0;
         let weekRevenue = 0;
+        let codRevenue = 0;
+        let onlineRevenue = 0;
 
         const weekStartForRevenue = new Date();
         weekStartForRevenue.setDate(weekStartForRevenue.getDate() - 7);
@@ -281,6 +283,17 @@ router.get('/dashboard', async (req, res) => {
                     weekRevenue += amt;
                 }
             }
+
+            // Payment Split
+            if (o.status !== 'cancelled') {
+                const amt = parseFloat(o.totalAmount || 0);
+                const pm = (o.paymentMethod || '').toLowerCase();
+                if (pm.includes('cash') || pm.includes('cod')) {
+                    codRevenue += amt;
+                } else {
+                    onlineRevenue += amt;
+                }
+            }
         });
 
         res.json({
@@ -302,8 +315,8 @@ router.get('/dashboard', async (req, res) => {
                 month: thisMonthRevenue
             },
             revenueBreakdown: {
-                cod: 0, // Placeholder
-                online: 0 // Placeholder
+                cod: codRevenue,
+                online: onlineRevenue
             },
             riderStats: {
                 onlineRiders,
