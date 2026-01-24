@@ -280,9 +280,15 @@ router.patch('/:id/status', async (req, res) => {
             if (order) {
                 // Credit Wallet Logic (MongoDB)
                 if (status === 'completed' && order.paymentMethod !== 'COD_UNPAID') {
-                    const commissionRate = 0.10;
-                    const commissionAmount = order.totalAmount * commissionRate;
-                    const netAmount = order.totalAmount - commissionAmount;
+                    // Fetch dynamic commission
+                    const settingsDoc = await req.db.collection('settings').findOne({ type: 'global_config' });
+                    const settings = settingsDoc ? settingsDoc.config : {};
+                    const commissionPercent = settings.vendorCommission !== undefined ? settings.vendorCommission : 5; // Default 5%
+
+                    const baseAmount = order.itemsTotal || order.totalAmount;
+                    const commissionRate = commissionPercent / 100;
+                    const commissionAmount = baseAmount * commissionRate;
+                    const netAmount = baseAmount - commissionAmount;
 
                     // Vendor ID is stored as string in Firestore, needed as ObjectId for Mongo
                     const vendorObjectId = new ObjectId(order.vendorId);

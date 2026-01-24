@@ -363,7 +363,7 @@ router.get('/vendor', async (req, res) => {
             if (date >= startOfDay) {
                 todayOrders++;
                 if (data.status !== 'cancelled') {
-                    todayRevenue += (data.totalAmount || 0);
+                    todayRevenue += (data.itemsTotal || data.totalAmount || 0);
                 }
             }
 
