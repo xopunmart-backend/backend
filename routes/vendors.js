@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { ObjectId } = require('mongodb');
+const admin = require('../firebase');
 
 // GET /api/vendors
 router.get('/', async (req, res) => {
@@ -36,33 +37,43 @@ router.get('/:id', async (req, res) => {
         }
 
         // 2. Fetch Order Stats (Firestore)
-        const ordersSnapshot = await admin.firestore().collection('orders')
-            .where('vendorId', '==', id)
-            .get();
+        console.log(`[VendorAPI] Fetching orders for vendorId: ${id}`);
+        try {
+            const ordersSnapshot = await admin.firestore().collection('orders')
+                .where('vendorId', '==', id)
+                .get();
 
-        let totalSales = 0;
-        let totalOrders = 0;
-        let pendingOrders = 0;
-        let completedOrders = 0;
+            console.log(`[VendorAPI] Orders found: ${ordersSnapshot.size}`);
 
-        ordersSnapshot.forEach(doc => {
-            const data = doc.data();
-            totalOrders++;
+            let totalSales = 0;
+            let totalOrders = 0;
+            let pendingOrders = 0;
+            let completedOrders = 0;
 
-            if (data.status !== 'cancelled') {
-                totalSales += (data.totalAmount || 0);
-            }
+            ordersSnapshot.forEach(doc => {
+                const data = doc.data();
+                totalOrders++;
 
-            if (data.status === 'pending') {
-                pendingOrders++;
-            }
+                if (data.status !== 'cancelled') {
+                    totalSales += (data.totalAmount || 0);
+                }
 
-            if (data.status === 'delivered' || data.status === 'completed') {
-                completedOrders++;
-            }
-        });
+                if (data.status === 'pending') {
+                    pendingOrders++;
+                }
 
-        const stats = { totalSales, totalOrders, pendingOrders, completedOrders };
+                if (data.status === 'delivered' || data.status === 'completed') {
+                    completedOrders++;
+                }
+            });
+            console.log(`[VendorAPI] Stats calculated: Sales=${totalSales}`);
+
+            var stats = { totalSales, totalOrders, pendingOrders, completedOrders };
+        } catch (fsError) {
+            console.error("[VendorAPI] Firestore Error:", fsError);
+            // Fallback to empty stats if Firestore fails
+            var stats = { totalSales: 0, totalOrders: 0, pendingOrders: 0, completedOrders: 0 };
+        }
 
         // 3. Fetch Recent Products
         const products = await req.db.collection('products')
