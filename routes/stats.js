@@ -11,7 +11,10 @@ router.get('/dashboard', async (req, res) => {
         const { period } = req.query; // 'today', 'yesterday', 'week'
 
         // 1. User Counts (MongoDB)
-        const activeVendors = await db.collection('users').countDocuments({ role: 'vendor', status: 'approved' });
+        const activeVendors = await db.collection('users').countDocuments({
+            role: 'vendor',
+            status: { $in: ['approved', 'Active'] }
+        });
         const activeCustomers = await db.collection('users').countDocuments({ role: 'customer' });
         const onlineRiders = await db.collection('users').countDocuments({ role: 'rider', isOnline: true });
 
