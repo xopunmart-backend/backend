@@ -237,7 +237,17 @@ router.get('/dashboard', async (req, res) => {
             }
         }
 
+        // 9. Today Orders
+        let todayOrders = 0;
+        orders.forEach(o => {
+            const d = o.createdAt && o.createdAt.toDate ? o.createdAt.toDate() : new Date(o.createdAt);
+            if (isThisMonth(d) && d.getDate() === now.getDate()) {
+                todayOrders++;
+            }
+        });
+
         res.json({
+            todayOrders,
             totalRevenue,
             totalRevenueTrend: revenueTrend,
             activeVendors,
