@@ -31,7 +31,9 @@ router.post('/', async (req, res) => {
         const settings = settingsDoc ? settingsDoc.config : {};
         const handlingFee = settings.handlingFee || 5;
         const baseDeliveryFee = settings.deliveryCharge || 20;
+
         const freeDeliveryThreshold = settings.freeDeliveryThreshold || 500;
+        const riderEarning = settings.riderEarning || 15;
 
         // 2. Enrich items & Group by Vendor
         const vendorOrders = {}; // Map<vendorId, orderData>
@@ -125,6 +127,9 @@ router.post('/', async (req, res) => {
 
             orderData.deliveryFee = deliveryFee;
             orderData.handlingFee = handlingFee;
+
+
+            orderData.riderEarning = riderEarning;
 
             orderData.discount = parseFloat(orderDiscount.toFixed(2));
             orderData.totalAmount = parseFloat((orderData.subtotal - orderDiscount).toFixed(2));
