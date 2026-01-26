@@ -139,20 +139,33 @@ router.post('/', async (req, res) => {
             if (orderDiscount > orderData.totalAmount) orderDiscount = orderData.totalAmount;
 
             // Apply Fees
-            const deliveryFee = orderData.totalAmount >= freeDeliveryThreshold ? 0 : baseDeliveryFee;
+            // Logic Update: Apply Delivery and Handling fees ONLY to the first order in the batch.
+            // Multi-Vendor Fee is also applied to the first order.
 
-            // Apply Multi-Vendor Fee to the first order only
+            let currentDeliveryFee = 0;
+            let currentHandlingFee = 0;
             let currentOrderMultiVendorFee = 0;
-            if (!isFirstOrderProcessed && totalMultiVendorCharge > 0) {
-                currentOrderMultiVendorFee = totalMultiVendorCharge;
+
+            if (!isFirstOrderProcessed) {
+                // Determine delivery fee based on GLOBAL cart total, not individual order total
+                // Note: handling logic asks for single delivery fee. 
+                // We use globalCartTotal calculated in step 2.
+                currentDeliveryFee = globalCartTotal >= freeDeliveryThreshold ? 0 : baseDeliveryFee;
+                currentHandlingFee = handlingFee;
+
+                if (totalMultiVendorCharge > 0) {
+                    currentOrderMultiVendorFee = totalMultiVendorCharge;
+                }
+
                 isFirstOrderProcessed = true;
             }
 
             orderData.itemsTotal = parseFloat(orderData.totalAmount.toFixed(2)); // Pure product total
-            orderData.subtotal = parseFloat((orderData.totalAmount + deliveryFee + handlingFee + currentOrderMultiVendorFee).toFixed(2)); // Subtotal with fees
+            // subtotal = items + fees
+            orderData.subtotal = parseFloat((orderData.totalAmount + currentDeliveryFee + currentHandlingFee + currentOrderMultiVendorFee).toFixed(2));
 
-            orderData.deliveryFee = deliveryFee;
-            orderData.handlingFee = handlingFee;
+            orderData.deliveryFee = currentDeliveryFee;
+            orderData.handlingFee = currentHandlingFee;
             orderData.multiVendorFee = currentOrderMultiVendorFee;
 
 
