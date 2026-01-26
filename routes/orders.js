@@ -109,12 +109,13 @@ router.post('/', async (req, res) => {
 
         // Multi-Vendor Fee Logic
         // We charge a fee for each additional vendor beyond the first one.
-        const settingsDoc = await req.db.collection('settings').findOne({ type: 'global_config' });
-        const multiVendorFee = settingsDoc?.config?.multiVendorFee || 10;
+        // settings is already fetched above at line 32
+        const multiVendorFee = settings.multiVendorFee || 10;
         const vendorCount = Object.keys(vendorOrders).length;
         const totalMultiVendorCharge = vendorCount > 1 ? (vendorCount - 1) * multiVendorFee : 0;
         let isFirstOrderProcessed = false;
 
+        const isMultiVendor = vendorCount > 1;
         const groupId = isMultiVendor ? uuidv4() : null;
 
         // Collect data for batch assignment
