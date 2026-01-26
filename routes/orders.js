@@ -563,4 +563,19 @@ router.get('/:id', async (req, res) => {
     }
 });
 
+// GET /api/orders/batch/:groupId
+router.get('/batch/:groupId', async (req, res) => {
+    try {
+        const { groupId } = req.params;
+        const snapshot = await admin.firestore().collection('orders').where('groupId', '==', groupId).get();
+
+        if (snapshot.empty) return res.status(404).json({ message: "Batch not found" });
+
+        const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        res.json(orders);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
 module.exports = router;
