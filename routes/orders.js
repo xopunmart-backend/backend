@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { ObjectId } = require('mongodb');
+const { v4: uuidv4 } = require('uuid');
 const admin = require('../firebase');
 const { authenticateToken } = require('../middleware/auth');
-const { assignOrderToNearestRider } = require('../utils/orderAssignment');
+const { assignOrderToNearestRider, assignOrderBatchToNearestRider } = require('../utils/orderAssignment');
 
 // POST /api/orders - Create new order(s) from cart
 router.post('/', async (req, res) => {
@@ -106,8 +107,19 @@ router.post('/', async (req, res) => {
         const createdOrderIds = [];
         const totalDiscount = parseFloat(discountAmount) || 0;
 
+        // Determine if we need a Group ID (Multi-Vendor Order)
+        const isMultiVendor = Object.keys(vendorOrders).length > 1;
+        const groupId = isMultiVendor ? uuidv4() : null;
+
+        // Collect data for batch assignment
+        const batchOrdersForAssignment = [];
+
         for (const vId in vendorOrders) {
             const orderData = vendorOrders[vId];
+
+            if (groupId) {
+                orderData.groupId = groupId;
+            }
 
             // Pro-rate discount
             // (OrderTotal / GlobalTotal) * TotalDiscount
@@ -143,13 +155,13 @@ router.post('/', async (req, res) => {
             const orderId = docRef.id;
             createdOrderIds.push(orderId);
 
-            console.log(`[Firestore] Created Order ${orderId} | Sub: ${orderData.subtotal} | Disc: ${orderData.discount} | Final: ${orderData.totalAmount}`);
+            console.log(`[Firestore] Created Order ${orderId} | Sub: ${orderData.subtotal} | Disc: ${orderData.discount} | Final: ${orderData.totalAmount} | Group: ${groupId}`);
 
-            // 4. Trigger Assignment (Async)
             if (orderData.vendorLocation) {
-                // We pass 'db' for Mongo (users access) but need to handle assignment logic update
-                // For now, allow it to call but we must update assigning util next!
-                assignOrderToNearestRider(req.db, orderId, orderData.vendorLocation);
+                batchOrdersForAssignment.push({
+                    orderId: orderId,
+                    vendorLocation: orderData.vendorLocation
+                });
             }
 
             // 5. Notifications (Vendor)
@@ -179,6 +191,20 @@ router.post('/', async (req, res) => {
                 }
             } catch (e) {
                 console.error("Vendor Notification Error:", e);
+            }
+        }
+
+        // 4. Trigger Assignment (Async)
+        // If Grouped, call Batch Assignment. Else call Single.
+        if (batchOrdersForAssignment.length > 0) {
+            if (groupId && batchOrdersForAssignment.length > 1) {
+                // Batch Assignment
+                assignOrderBatchToNearestRider(req.db, groupId, batchOrdersForAssignment);
+            } else {
+                // Single Assignments (Loop though likely only 1 if not grouped, but safer to loop)
+                for (const item of batchOrdersForAssignment) {
+                    assignOrderToNearestRider(req.db, item.orderId, item.vendorLocation);
+                }
             }
         }
 
@@ -429,9 +455,6 @@ router.patch('/:id/accept', async (req, res) => {
 
         let assignedRiderId = riderId;
         // Normalize Rider ID (Use Firebase UID preference if available)
-        // We trust client sending correct ID, but ideally we should verify.
-        // For Speed: We use what is sent, assuming auth middleware verified token.
-        // Wait, 'req.user' isn't populated here? We rely on body.
 
         // Transaction to ensure atomicity
         await admin.firestore().runTransaction(async (t) => {
@@ -439,27 +462,46 @@ router.patch('/:id/accept', async (req, res) => {
             if (!doc.exists) throw new Error("Order not found");
 
             const data = doc.data();
-            if (data.riderId) throw new Error("Order already accepted");
 
-            // Check visibility permission
-            if (data.visibleToRiderId && data.visibleToRiderId !== riderId) {
-                // Try loose matching (string vs obj)
-                if (data.visibleToRiderId.toString() !== riderId.toString()) {
-                    // Secondary Check: The riderId might be MongoID, but visibleToRiderId is FirebaseUID
-                    // We need to verify if this MongoID belongs to the FirebaseUID
-                    const riderStart = await req.db.collection('users').findOne({ _id: new ObjectId(riderId) });
-                    if (!riderStart || riderStart.firebaseUid !== data.visibleToRiderId) {
-                        throw new Error("Order not assigned to you");
+            // CHECK FOR BATCH
+            let ordersToUpdate = [{ ref: orderRef, data: data }];
+
+            if (data.groupId) {
+                // Fetch all orders in this group
+                const groupSnap = await t.get(
+                    admin.firestore().collection('orders').where('groupId', '==', data.groupId)
+                );
+                ordersToUpdate = []; // Reset and fill with group
+                groupSnap.forEach(gDoc => {
+                    ordersToUpdate.push({ ref: gDoc.ref, data: gDoc.data() });
+                });
+            }
+
+            // Validate ALL orders in batch
+            for (const item of ordersToUpdate) {
+                if (item.data.riderId) throw new Error("One or more orders in this batch are already accepted");
+
+                // Check visibility permission
+                if (item.data.visibleToRiderId && item.data.visibleToRiderId !== riderId) {
+                    if (item.data.visibleToRiderId.toString() !== riderId.toString()) {
+                        // Secondary Check: The riderId might be MongoID, but visibleToRiderId is FirebaseUID
+                        const riderStart = await req.db.collection('users').findOne({ _id: new ObjectId(riderId) });
+                        if (!riderStart || riderStart.firebaseUid !== item.data.visibleToRiderId) {
+                            throw new Error("Order not assigned to you");
+                        }
                     }
                 }
             }
 
-            t.update(orderRef, {
-                riderId: riderId,
-                status: 'accepted',
-                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                riderAcceptedAt: admin.firestore.FieldValue.serverTimestamp()
-            });
+            // Update ALL orders
+            for (const item of ordersToUpdate) {
+                t.update(item.ref, {
+                    riderId: riderId,
+                    status: 'accepted',
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    riderAcceptedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+            }
         });
 
         // Mark Rider Busy (MongoDB)
@@ -471,7 +513,7 @@ router.patch('/:id/accept', async (req, res) => {
         }
         await req.db.collection('users').updateOne(riderQuery, { $set: { isAvailable: false } });
 
-        res.json({ success: true, message: "Order accepted" });
+        res.json({ success: true, message: "Order(s) accepted" });
     } catch (error) {
         console.error("Accept order error:", error);
         const status = error.message.includes("found") ? 404 : 400;
