@@ -107,8 +107,14 @@ router.post('/', async (req, res) => {
         const createdOrderIds = [];
         const totalDiscount = parseFloat(discountAmount) || 0;
 
-        // Determine if we need a Group ID (Multi-Vendor Order)
-        const isMultiVendor = Object.keys(vendorOrders).length > 1;
+        // Multi-Vendor Fee Logic
+        // We charge a fee for each additional vendor beyond the first one.
+        const settingsDoc = await req.db.collection('settings').findOne({ type: 'global_config' });
+        const multiVendorFee = settingsDoc?.config?.multiVendorFee || 10;
+        const vendorCount = Object.keys(vendorOrders).length;
+        const totalMultiVendorCharge = vendorCount > 1 ? (vendorCount - 1) * multiVendorFee : 0;
+        let isFirstOrderProcessed = false;
+
         const groupId = isMultiVendor ? uuidv4() : null;
 
         // Collect data for batch assignment
@@ -134,11 +140,19 @@ router.post('/', async (req, res) => {
             // Apply Fees
             const deliveryFee = orderData.totalAmount >= freeDeliveryThreshold ? 0 : baseDeliveryFee;
 
+            // Apply Multi-Vendor Fee to the first order only
+            let currentOrderMultiVendorFee = 0;
+            if (!isFirstOrderProcessed && totalMultiVendorCharge > 0) {
+                currentOrderMultiVendorFee = totalMultiVendorCharge;
+                isFirstOrderProcessed = true;
+            }
+
             orderData.itemsTotal = parseFloat(orderData.totalAmount.toFixed(2)); // Pure product total
-            orderData.subtotal = parseFloat((orderData.totalAmount + deliveryFee + handlingFee).toFixed(2)); // Subtotal with fees
+            orderData.subtotal = parseFloat((orderData.totalAmount + deliveryFee + handlingFee + currentOrderMultiVendorFee).toFixed(2)); // Subtotal with fees
 
             orderData.deliveryFee = deliveryFee;
             orderData.handlingFee = handlingFee;
+            orderData.multiVendorFee = currentOrderMultiVendorFee;
 
 
             orderData.riderEarning = riderEarning;

@@ -21,7 +21,8 @@ router.get('/', async (req, res) => {
                 handlingFee: 5,
                 deliveryCharge: 20,
                 freeDeliveryThreshold: 500,
-                freeDeliveryFirstXOrders: 0
+                freeDeliveryFirstXOrders: 0,
+                multiVendorFee: 10 // Default per extra shop charge
             });
         }
 
