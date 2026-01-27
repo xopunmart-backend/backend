@@ -412,29 +412,24 @@ router.get('/available', async (req, res) => {
         const { riderId } = req.query;
 
         let query = admin.firestore().collection('orders')
-            .where('status', 'in', ['pending', 'preparing', 'ready'])
-            .where('riderId', '==', null);
-
-        // Firestore complex OR queries are limited.
-        // We need (visibleToRiderId == null OR visibleToRiderId == riderId)
-        // We can fetch all unassigned and filter in memory (dataset usually header-small for unassigned)
-        // OR make two queries. Filtering in memory is safer/easier for this scale.
+            .where('status', 'in', ['pending', 'preparing', 'ready']);
+        // .where('riderId', '==', null); // REMOVED: Excludes riderId="" which happens often
 
         const snapshot = await query.orderBy('createdAt', 'desc').get();
         let orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
+        // Strict JS Filter: Exclude if riderId is present and not empty string
+        orders = orders.filter(o => {
+            const hasRider = o.riderId && o.riderId.toString().trim() !== '';
+            return !hasRider;
+        });
+
         if (riderId) {
             orders = orders.filter(o =>
-                (!o.riderId) && // Safety check: Must be unassigned
-                (
-                    o.visibleToRiderId === null ||
-                    o.visibleToRiderId === riderId ||
-                    (o.visibleToRiderId && o.visibleToRiderId.toString() === riderId)
-                )
+                o.visibleToRiderId === null ||
+                o.visibleToRiderId === riderId ||
+                (o.visibleToRiderId && o.visibleToRiderId.toString() === riderId)
             );
-        } else {
-            // If no riderId provided, still ensure we only return unassigned ones (though query does this)
-            orders = orders.filter(o => !o.riderId);
         }
 
         res.json(orders);
