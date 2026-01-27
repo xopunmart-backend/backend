@@ -426,7 +426,7 @@ router.get('/available', async (req, res) => {
 
         if (riderId) {
             orders = orders.filter(o =>
-                o.visibleToRiderId === null ||
+                !o.visibleToRiderId ||
                 o.visibleToRiderId === riderId ||
                 (o.visibleToRiderId && o.visibleToRiderId.toString() === riderId)
             );
