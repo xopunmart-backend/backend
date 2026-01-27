@@ -145,6 +145,7 @@ router.post('/', async (req, res) => {
             let currentDeliveryFee = 0;
             let currentHandlingFee = 0;
             let currentOrderMultiVendorFee = 0;
+            let currentRiderEarning = settings.extraShopRiderFee || 10; // Default to extra fee
 
             if (!isFirstOrderProcessed) {
                 // Determine delivery fee based on GLOBAL cart total, not individual order total
@@ -156,6 +157,8 @@ router.post('/', async (req, res) => {
                 if (totalMultiVendorCharge > 0) {
                     currentOrderMultiVendorFee = totalMultiVendorCharge;
                 }
+
+                currentRiderEarning = riderEarning; // First order gets base earning
 
                 isFirstOrderProcessed = true;
             }
@@ -169,7 +172,7 @@ router.post('/', async (req, res) => {
             orderData.multiVendorFee = currentOrderMultiVendorFee;
 
 
-            orderData.riderEarning = riderEarning;
+            orderData.riderEarning = currentRiderEarning;
 
             orderData.discount = parseFloat(orderDiscount.toFixed(2));
             orderData.totalAmount = parseFloat((orderData.subtotal - orderDiscount).toFixed(2));

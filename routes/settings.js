@@ -22,7 +22,10 @@ router.get('/', async (req, res) => {
                 deliveryCharge: 20,
                 freeDeliveryThreshold: 500,
                 freeDeliveryFirstXOrders: 0,
-                multiVendorFee: 10 // Default per extra shop charge
+                baseDeliveryFee: 40, // Legacy fallback
+                riderEarning: 15, // Default base rider earning
+                extraShopRiderFee: 10, // Default per extra shop earning
+                multiVendorFee: 10 // Default per extra shop charge to customer
             });
         }
 
