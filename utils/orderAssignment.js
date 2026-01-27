@@ -9,9 +9,17 @@ const { calculateDistance } = require('../utils/geo');
  * @param {Object} vendorLocation - { latitude, longitude }
  * @param {Array} excludedRiderIds - List of rider IDs to skip (e.g. rejected)
  */
+/**
+ * Assigns (Broadcasts) a specific order to all available riders.
+ * Note: Keeps visibleToRiderId as NULL so complete list sees it.
+ * @param {Db} db - Mongo Database instance (for Riders)
+ * @param {string} orderId - Order ID to assign (Firestore Doc ID)
+ * @param {Object} vendorLocation - { latitude, longitude }
+ * @param {Array} excludedRiderIds - List of rider IDs to skip (e.g. rejected)
+ */
 async function assignOrderToNearestRider(db, orderId, vendorLocation, excludedRiderIds = []) {
     try {
-        console.log(`Finding rider for order ${orderId} near`, vendorLocation);
+        console.log(`Broadcasting order ${orderId} near`, vendorLocation);
 
         // 1. Find all online and available riders (Keep MongoDB for now as Users are there)
         const riders = await db.collection('users').find({
@@ -28,75 +36,65 @@ async function assignOrderToNearestRider(db, orderId, vendorLocation, excludedRi
         const validRiders = riders.filter(r => r.liveLocation && r.liveLocation.latitude && r.liveLocation.longitude);
 
         if (validRiders.length === 0) {
-            console.log("No available riders found.");
-            // Update Firestore Order directly
+            console.log("No available riders found to broadcast.");
+            // Mark as 'searching' but visible to 'null' (i.e. everyone who might come online)
             await admin.firestore().collection('orders').doc(orderId.toString()).update({
                 visibleToRiderId: null,
                 status: 'pending',
-                assignmentStatus: 'no_riders_available',
+                assignmentStatus: 'searching', // Changed from 'no_riders_available' so it shows up in "New Requests" list
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
             });
             return null;
         }
 
-        // 3. Calculate distances
-        const ridersWithDistance = validRiders.map(rider => ({
-            ...rider,
-            distance: calculateDistance(vendorLocation, rider.liveLocation)
-        }));
-
-        // 4. Sort by distance
-        ridersWithDistance.sort((a, b) => a.distance - b.distance);
-        const nearestRider = ridersWithDistance[0];
-
-        // 5. Assign
-        // Prefer Firebase UID
-        const assignedId = nearestRider.firebaseUid || nearestRider._id.toString();
-
+        // 3. Set Order to 'Requesting' / 'Searching' for ALL
+        // Instead of assigning to one, we just ensure it is OPEN.
         await admin.firestore().collection('orders').doc(orderId.toString()).update({
-            visibleToRiderId: assignedId,
+            visibleToRiderId: null, // Open for all
             status: 'requesting_rider',
-            assignmentStatus: 'assigned',
+            assignmentStatus: 'searching',
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
-        console.log(`Assigned order ${orderId} to rider ${nearestRider._id} (${nearestRider.name}) at ${nearestRider.distance}m`);
+        console.log(`Broadcasted order ${orderId} to ${validRiders.length} riders.`);
 
-        // Send FCM notification to rider
-        try {
-            let riderToken = null;
-            // Rider App saves to 'riders' collection in Firestore
-            const riderDoc = await admin.firestore().collection('riders').doc(assignedId).get();
-            if (riderDoc.exists) {
-                riderToken = riderDoc.data().fcmToken;
-            } else {
-                // Fallback to 'users' collection if not in riders
-                const userDoc = await admin.firestore().collection('users').doc(assignedId).get();
-                if (userDoc.exists) riderToken = userDoc.data().fcmToken;
-            }
+        // 4. Send FCM notification to ALL found riders
+        for (const rider of validRiders) {
+            try {
+                let riderToken = null;
+                const rId = rider.firebaseUid || rider._id.toString();
 
-            if (riderToken) {
-                const message = {
-                    notification: {
-                        title: "New Delivery Assigned",
-                        body: "You have been assigned a new order."
-                    },
-                    data: {
-                        type: "order_assigned",
-                        orderId: orderId.toString() // Firestore ID is string
-                    },
-                    token: riderToken
-                };
-                await admin.messaging().send(message);
-                console.log(`[FCM] Sent assignment notification to rider ${assignedId}`);
-            } else {
-                console.log(`[FCM] Rider ${assignedId} has no fcmToken.`);
+                // Rider App saves to 'riders' collection in Firestore
+                const riderDoc = await admin.firestore().collection('riders').doc(rId).get();
+                if (riderDoc.exists) {
+                    riderToken = riderDoc.data().fcmToken;
+                } else {
+                    // Fallback to 'users' collection 
+                    const userDoc = await admin.firestore().collection('users').doc(rId).get();
+                    if (userDoc.exists) riderToken = userDoc.data().fcmToken;
+                }
+
+                if (riderToken) {
+                    const message = {
+                        notification: {
+                            title: "New Order Available",
+                            body: "A new order is available for pickup."
+                        },
+                        data: {
+                            type: "order_assigned", // Using same type for now to trigger refresh
+                            orderId: orderId.toString()
+                        },
+                        token: riderToken
+                    };
+                    await admin.messaging().send(message);
+                    // console.log(`[FCM] Sent broadcast to rider ${rId}`);
+                }
+            } catch (notifErr) {
+                console.error(`[FCM] Error notifying rider ${rider.name}:`, notifErr);
             }
-        } catch (notifErr) {
-            console.error("[FCM] Error sending rider notification:", notifErr);
         }
 
-        return nearestRider;
+        return validRiders;
 
     } catch (error) {
         console.error("Assignment Error:", error);
@@ -104,7 +102,7 @@ async function assignOrderToNearestRider(db, orderId, vendorLocation, excludedRi
 }
 
 /**
- * Assigns a batch of orders (same groupId) to the nearest available rider.
+ * Assigns (Broadcasts) a batch of orders (same groupId) to all available riders.
  * @param {Db} db - Mongo Database instance
  * @param {string} groupId - Shared Group ID
  * @param {Array} batchOrders - Array of { orderId, vendorLocation }
@@ -116,7 +114,7 @@ async function assignOrderBatchToNearestRider(db, groupId, batchOrders, excluded
 
         // Use the first location to find a rider (simplification)
         const referenceLocation = batchOrders[0].vendorLocation;
-        console.log(`Finding rider for BATCH ${groupId} near`, referenceLocation);
+        console.log(`Broadcasting BATCH ${groupId} near`, referenceLocation);
 
         // 1. Find all online and available riders
         const riders = await db.collection('users').find({
@@ -130,77 +128,58 @@ async function assignOrderBatchToNearestRider(db, groupId, batchOrders, excluded
 
         const validRiders = riders.filter(r => r.liveLocation && r.liveLocation.latitude && r.liveLocation.longitude);
 
-        if (validRiders.length === 0) {
-            console.log("No available riders found for batch.");
-            // Update Firestore Orders
-            const batch = admin.firestore().batch();
-            for (const item of batchOrders) {
-                const ref = admin.firestore().collection('orders').doc(item.orderId);
-                batch.update(ref, {
-                    visibleToRiderId: null,
-                    status: 'pending',
-                    assignmentStatus: 'no_riders_available',
-                    updatedAt: admin.firestore.FieldValue.serverTimestamp()
-                });
-            }
-            await batch.commit();
-            return null;
-        }
-
-        // 2. Calculate distances
-        const ridersWithDistance = validRiders.map(rider => ({
-            ...rider,
-            distance: calculateDistance(referenceLocation, rider.liveLocation)
-        }));
-
-        ridersWithDistance.sort((a, b) => a.distance - b.distance);
-        const nearestRider = ridersWithDistance[0];
-
-        // 3. Assign
-        const assignedId = nearestRider.firebaseUid || nearestRider._id.toString();
-
-        const writeBatch = admin.firestore().batch();
+        // 2. Update Firestore Orders to be OPEN
+        const batch = admin.firestore().batch();
         for (const item of batchOrders) {
             const ref = admin.firestore().collection('orders').doc(item.orderId);
-            writeBatch.update(ref, {
-                visibleToRiderId: assignedId,
+            batch.update(ref, {
+                visibleToRiderId: null, // Broadcast
                 status: 'requesting_rider',
-                assignmentStatus: 'assigned',
+                assignmentStatus: 'searching',
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
             });
         }
-        await writeBatch.commit();
+        await batch.commit();
 
-        console.log(`Assigned BATCH ${groupId} to rider ${nearestRider._id} (${nearestRider.name})`);
-
-        // 4. Send Notification (Single notification for the batch)
-        try {
-            let riderToken = null;
-            const riderDoc = await admin.firestore().collection('riders').doc(assignedId).get();
-            if (riderDoc.exists) riderToken = riderDoc.data().fcmToken;
-            else {
-                const userDoc = await admin.firestore().collection('users').doc(assignedId).get();
-                if (userDoc.exists) riderToken = userDoc.data().fcmToken;
-            }
-
-            if (riderToken) {
-                await admin.messaging().send({
-                    notification: {
-                        title: "New Batch Delivery",
-                        body: `You have a multi-vendor order request!`
-                    },
-                    data: {
-                        type: "order_assigned",
-                        batchId: groupId // Send batchId so client knows
-                    },
-                    token: riderToken
-                });
-            }
-        } catch (notifErr) {
-            console.error("[FCM] Error sending rider notification:", notifErr);
+        if (validRiders.length === 0) {
+            console.log("No available riders found for batch broadcast.");
+            return null;
         }
 
-        return nearestRider;
+        console.log(`Broadcasted BATCH ${groupId} to ${validRiders.length} riders.`);
+
+        // 3. Send Notification to ALL found riders
+        for (const rider of validRiders) {
+            try {
+                let riderToken = null;
+                const rId = rider.firebaseUid || rider._id.toString();
+
+                const riderDoc = await admin.firestore().collection('riders').doc(rId).get();
+                if (riderDoc.exists) riderToken = riderDoc.data().fcmToken;
+                else {
+                    const userDoc = await admin.firestore().collection('users').doc(rId).get();
+                    if (userDoc.exists) riderToken = userDoc.data().fcmToken;
+                }
+
+                if (riderToken) {
+                    await admin.messaging().send({
+                        notification: {
+                            title: "New Batch Delivery",
+                            body: `Multi-vendor order request available!`
+                        },
+                        data: {
+                            type: "order_assigned",
+                            batchId: groupId
+                        },
+                        token: riderToken
+                    });
+                }
+            } catch (notifErr) {
+                console.error(`[FCM] Error notifying rider ${rider.name} for batch:`, notifErr);
+            }
+        }
+
+        return validRiders;
 
     } catch (error) {
         console.error("Batch Assignment Error:", error);
