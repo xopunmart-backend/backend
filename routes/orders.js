@@ -412,7 +412,7 @@ router.get('/available', async (req, res) => {
         const { riderId } = req.query;
 
         let query = admin.firestore().collection('orders')
-            .where('status', 'in', ['pending', 'preparing', 'ready']);
+            .where('status', 'in', ['pending', 'preparing', 'ready', 'requesting_rider']);
         // .where('riderId', '==', null); // REMOVED: Excludes riderId="" which happens often
 
         const snapshot = await query.orderBy('createdAt', 'desc').get();
