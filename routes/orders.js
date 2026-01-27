@@ -422,10 +422,16 @@ router.get('/available', async (req, res) => {
 
         if (riderId) {
             orders = orders.filter(o =>
-                o.visibleToRiderId === null ||
-                o.visibleToRiderId === riderId ||
-                (o.visibleToRiderId && o.visibleToRiderId.toString() === riderId)
+                (!o.riderId) && // Safety check: Must be unassigned
+                (
+                    o.visibleToRiderId === null ||
+                    o.visibleToRiderId === riderId ||
+                    (o.visibleToRiderId && o.visibleToRiderId.toString() === riderId)
+                )
             );
+        } else {
+            // If no riderId provided, still ensure we only return unassigned ones (though query does this)
+            orders = orders.filter(o => !o.riderId);
         }
 
         res.json(orders);
