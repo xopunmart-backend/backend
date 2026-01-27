@@ -259,11 +259,14 @@ router.post('/', async (req, res) => {
 // GET /api/orders?vendorId=...
 router.get('/', async (req, res) => {
     try {
-        const { vendorId } = req.query;
+        const { vendorId, riderId } = req.query;
         let query = admin.firestore().collection('orders');
 
         if (vendorId) {
             query = query.where('vendorId', '==', vendorId);
+        }
+        if (riderId) {
+            query = query.where('riderId', '==', riderId);
         }
 
         const snapshot = await query.orderBy('createdAt', 'desc').get();
