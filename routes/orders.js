@@ -269,8 +269,22 @@ router.get('/', async (req, res) => {
             query = query.where('riderId', '==', riderId);
         }
 
-        const snapshot = await query.orderBy('createdAt', 'desc').get();
+        let snapshot;
+        if (vendorId || riderId) {
+            // If filtering, don't use orderBy in query to avoid index errors
+            snapshot = await query.get();
+        } else {
+            snapshot = await query.orderBy('createdAt', 'desc').get();
+        }
+
         const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        // Sort in memory (descending)
+        orders.sort((a, b) => {
+            const dateA = a.createdAt ? new Date(a.createdAt._seconds * 1000) : new Date(0);
+            const dateB = b.createdAt ? new Date(b.createdAt._seconds * 1000) : new Date(0);
+            return dateB - dateA;
+        });
 
         res.json(orders);
     } catch (error) {
