@@ -51,13 +51,21 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ message: "No config data provided" });
         }
 
+        // Fetch existing settings
+        const existingSettingsDoc = await req.db.collection('settings').findOne({ type: 'global_config' });
+        const existingConfig = existingSettingsDoc ? existingSettingsDoc.config : {};
+
+        // Merge existing config with new config
+        // New keys in 'config' will overwrite existing ones, others will be preserved
+        const mergedConfig = { ...existingConfig, ...config };
+
         // Upsert the settings document
         await req.db.collection('settings').updateOne(
             { type: 'global_config' },
             {
                 $set: {
                     type: 'global_config',
-                    config: config,
+                    config: mergedConfig,
                     updatedAt: new Date()
                 }
             },
