@@ -88,9 +88,6 @@ router.get('/dashboard', async (req, res) => {
         };
 
         const dailyRevenueMap = {}; // YYYY-MM-DD -> total
-        const sevenDaysAgo = new Date();
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        sevenDaysAgo.setHours(0, 0, 0, 0);
 
         // Filtered Orders for the "Orders Overview" and "Latest Orders" section
         const filteredOrders = [];
@@ -122,11 +119,9 @@ router.get('/dashboard', async (req, res) => {
                 if (date) {
                     if (isThisMonth(date)) thisMonthRevenue += amount;
                     if (isLastMonth(date)) lastMonthRevenue += amount;
-                    // Daily Revenue (Last 7 days)
-                    if (date >= sevenDaysAgo) {
-                        const dayStr = date.toISOString().split('T')[0];
-                        dailyRevenueMap[dayStr] = (dailyRevenueMap[dayStr] || 0) + amount;
-                    }
+                    // Daily Revenue (All Time)
+                    const dayStr = date.toISOString().split('T')[0];
+                    dailyRevenueMap[dayStr] = (dailyRevenueMap[dayStr] || 0) + amount;
                 }
             } else {
                 cancelledLoss += amount;
