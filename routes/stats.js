@@ -328,6 +328,32 @@ router.get('/dashboard', async (req, res) => {
                 pendingPayoutVendors,
                 topVendors: sortedVendors
             },
+            // Fix: Include missing fields and sanitize dates/IDs
+            latestOrders: recentOrders.map(o => {
+                let d = new Date();
+                if (o.createdAt && o.createdAt.toDate) d = o.createdAt.toDate();
+                else if (o.createdAt && o.createdAt._seconds) d = new Date(o.createdAt._seconds * 1000);
+                else if (o.createdAt) d = new Date(o.createdAt);
+
+                return {
+                    _id: o.id, // Frontend expects _id
+                    customerName: o.customerName,
+                    totalAmount: o.totalAmount,
+                    status: o.status,
+                    createdAt: d.toISOString()
+                };
+            }),
+            recentActivity: recentActivity.map(a => {
+                let d = new Date();
+                if (a.timestamp && a.timestamp.toDate) d = a.timestamp.toDate();
+                else if (a.timestamp && a.timestamp._seconds) d = new Date(a.timestamp._seconds * 1000);
+                else if (a.timestamp) d = new Date(a.timestamp);
+
+                return {
+                    ...a,
+                    timestamp: d.toISOString()
+                };
+            })
 
         });
     } catch (error) {
