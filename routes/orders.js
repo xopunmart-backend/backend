@@ -9,16 +9,24 @@ const { assignOrderToNearestRider, assignOrderBatchToNearestRider } = require('.
 // POST /api/orders - Create new order(s) from cart
 router.post('/', async (req, res) => {
     try {
-        const { userId, address, paymentMethod, location, couponCode, discountAmount } = req.body;
+        const { userId, address, paymentMethod, location, couponCode, discountAmount, directItems } = req.body;
 
         if (!userId || !address) {
             return res.status(400).json({ message: "User ID and address are required" });
         }
 
-        // 1. Get User's Cart (MongoDB)
-        const cart = await req.db.collection('carts').findOne({ userId });
-        if (!cart || !cart.items || cart.items.length === 0) {
-            return res.status(400).json({ message: "Cart is empty" });
+        // 1. Determine items source (Cart vs Direct)
+        let itemsToProcess = [];
+
+        if (directItems && Array.isArray(directItems) && directItems.length > 0) {
+            itemsToProcess = directItems;
+        } else {
+            // Get User's Cart (MongoDB)
+            const cart = await req.db.collection('carts').findOne({ userId });
+            if (!cart || !cart.items || cart.items.length === 0) {
+                return res.status(400).json({ message: "Cart is empty" });
+            }
+            itemsToProcess = cart.items;
         }
 
         // Fetch Customer Details (MongoDB) needed for Denormalization
@@ -40,7 +48,7 @@ router.post('/', async (req, res) => {
         const vendorOrders = {}; // Map<vendorId, orderData>
         let globalCartTotal = 0.0;
 
-        for (const item of cart.items) {
+        for (const item of itemsToProcess) {
             const product = await req.db.collection('products').findOne({ _id: new ObjectId(item.productId) });
             if (!product) continue;
 
@@ -239,11 +247,13 @@ router.post('/', async (req, res) => {
             }
         }
 
-        // 6. Clear Cart
-        await req.db.collection('carts').updateOne(
-            { userId },
-            { $set: { items: [], updatedAt: new Date() } }
-        );
+        // 6. Clear Cart (ONLY if not a direct buy)
+        if (!directItems) {
+            await req.db.collection('carts').updateOne(
+                { userId },
+                { $set: { items: [], updatedAt: new Date() } }
+            );
+        }
 
         res.status(201).json({
             message: "Order placed successfully",
