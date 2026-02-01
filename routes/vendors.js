@@ -6,8 +6,13 @@ const admin = require('../firebase');
 // GET /api/vendors
 router.get('/', async (req, res) => {
     try {
+        const query = { role: 'vendor' };
+        if (req.query.status) {
+            query.status = req.query.status;
+        }
+
         const vendors = await req.db.collection('users')
-            .find({ role: 'vendor' })
+            .find(query)
             .project({ password: 0 }) // Exclude password
             .toArray();
         res.json(vendors);
