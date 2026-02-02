@@ -211,6 +211,17 @@ router.post('/firebase-login', async (req, res) => {
                 createdAt: new Date(),
                 updatedAt: new Date()
             };
+
+            // Add shop details if available
+            if (req.body.shopCategories) newUser.shopCategories = req.body.shopCategories;
+            if (req.body.shopLocation) newUser.shopLocation = req.body.shopLocation;
+            if (req.body.shopImage) newUser.shopImage = req.body.shopImage;
+
+            // Set primary category
+            if (newUser.shopCategories && newUser.shopCategories.length > 0) {
+                newUser.shopCategory = newUser.shopCategories[0];
+            }
+
             const result = await req.db.collection('users').insertOne(newUser);
             user = { ...newUser, _id: result.insertedId };
         }
