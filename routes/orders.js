@@ -5,6 +5,10 @@ const { v4: uuidv4 } = require('uuid');
 const admin = require('../firebase');
 const { authenticateToken } = require('../middleware/auth');
 const { assignOrderToNearestRider, assignOrderBatchToNearestRider } = require('../utils/orderAssignment');
+const { sendToUser } = require('../utils/notificationSender');
+
+const { sendToUser } = require('../utils/notificationSender');
+
 
 // POST /api/orders - Create new order(s) from cart
 router.post('/', async (req, res) => {
@@ -466,6 +470,51 @@ router.patch('/:id/status', async (req, res) => {
                 }
             }
         }
+
+        // --- NEW: Notify Customer ---
+        if (order.userId) {
+            let title = '';
+            let body = '';
+            // Normalize status to lowercase for comparison
+            const s = status.toLowerCase();
+
+            switch (s) {
+                case 'confirmed':
+                    title = 'Order Confirmed! ✅';
+                    body = `Your order #${id.substring(id.length - 6).toUpperCase()} has been confirmed.`;
+                    break;
+                case 'preparing':
+                    title = 'Preparing your Order 🍳';
+                    body = 'The restaurant is preparing your food.';
+                    break;
+                case 'ready':
+                    title = 'Order Ready 🥡';
+                    body = 'Your order is packed and waiting for pickup.';
+                    break;
+                case 'out_for_delivery':
+                case 'picked_up':
+                    title = 'Out for Delivery 🛵';
+                    body = 'Your rider is on the way!';
+                    break;
+                case 'completed':
+                case 'delivered':
+                    title = 'Delivered 🎉';
+                    body = 'Your order has been delivered. Enjoy!';
+                    break;
+                case 'cancelled':
+                    title = 'Order Cancelled ❌';
+                    body = 'Your order has been cancelled.';
+                    break;
+            }
+
+            if (title && body) {
+                // Async call - don't await blocking response
+                // Pass userId (usually MongoID string) directly
+                sendToUser(req.db, order.userId, title, body, { type: 'order', orderId: id });
+            }
+        }
+        // ----------------------------
+
 
         res.json({ message: "Order status updated", status });
     } catch (error) {
