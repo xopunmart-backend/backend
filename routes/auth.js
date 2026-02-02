@@ -429,6 +429,14 @@ router.put('/profile', async (req, res) => {
             updates.savedAddresses = req.body.savedAddresses;
         }
 
+        if (req.body.storeTimings) {
+            updates.storeTimings = req.body.storeTimings;
+        }
+
+        if (req.body.autoAcceptOrders !== undefined) {
+            updates.autoAcceptOrders = req.body.autoAcceptOrders;
+        }
+
         const result = await req.db.collection('users').updateOne(
             { _id: userId },
             { $set: updates }

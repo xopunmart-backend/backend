@@ -17,7 +17,7 @@ router.get('/', async (req, res) => {
             // Ideally should be consistent.
         }
 
-        const products = await req.db.collection('products').aggregate([
+        const allProducts = await req.db.collection('products').aggregate([
             { $match: query },
             {
                 $lookup: {
@@ -28,16 +28,91 @@ router.get('/', async (req, res) => {
                 }
             },
             {
-                $addFields: {
-                    vendorName: { $arrayElemAt: ['$vendor.name', 0] }
-                }
+                $unwind: '$vendor' // Unwind to access vendor fields easily
             },
             {
-                $project: {
-                    vendor: 0
+                $addFields: {
+                    vendorName: '$vendor.name',
+                    vendorStoreTimings: '$vendor.storeTimings',
+                    isShopOpen: {
+                        $function: {
+                            body: function (storeTimings) {
+                                if (!storeTimings) return true; // Default to open if no timings
+
+                                // Get current time in India (IST) - adjusting for server timezone if needed
+                                // Assuming server is UTC, add 5.5 hours. 
+                                // If server is already local, this might need adjustment.
+                                // Best to use a library or consistent offset. 
+                                // Basic native implementation:
+                                const now = new Date();
+                                // Create date object for IST
+                                const offset = 5.5 * 60 * 60 * 1000;
+                                const istDate = new Date(now.getTime() + offset);
+                                // ACTUALLY: new Date().toLocaleString("en-US", {timeZone: "Asia/Kolkata"}) is better but $function might not support full node env.
+                                // MongoDB $function runs in JS engine on server. 
+                                // Let's simplify: Do filtering in APPLICATION layer (Node.js) after fetch, 
+                                // it is safer and easier to debug timezones.
+                            },
+                            args: ['$vendor.storeTimings'],
+                            lang: 'js'
+                        }
+                    }
                 }
             }
         ]).toArray();
+
+        // Application Layer Filtering for Open/Closed logic
+        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const now = new Date();
+        // Adjust for IST (UTC+5:30) if server is UTC
+        // This is a naive check. For production, consider using moment-timezone or explicit offsets.
+        // Assuming server is UTC:
+        const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
+        const currentDay = days[istTime.getUTCDay()]; // getUTCDay because we added offset to make it "IST time" but as a UTC number
+        // Wait, better way:
+        const options = { timeZone: 'Asia/Kolkata', hour12: true, hour: 'numeric', minute: 'numeric' };
+        const formatter = new Intl.DateTimeFormat('en-US', { ...options, weekday: 'short' });
+        const parts = formatter.formatToParts(now);
+        const dayPart = parts.find(p => p.type === 'weekday').value; // "Mon", "Tue"
+
+        // Custom parser for "09:00 AM"
+        const parseTime = (timeStr) => {
+            const [time, modifier] = timeStr.split(' ');
+            let [hours, minutes] = time.split(':');
+            hours = parseInt(hours, 10);
+            minutes = parseInt(minutes, 10);
+            if (hours === 12 && modifier === 'AM') hours = 0;
+            if (hours !== 12 && modifier === 'PM') hours += 12;
+            return hours * 60 + minutes;
+        };
+
+        const currentMinutes = istTime.getUTCHours() * 60 + istTime.getUTCMinutes();
+
+        const products = allProducts.filter(product => {
+            const timings = product.vendor.storeTimings;
+            if (!timings) return true; // Default Open
+
+            const todayTiming = timings[dayPart] || timings[currentDay]; // Try matched day
+            if (!todayTiming) return true; // No timing for today, assume open? Or closed? Default Open.
+
+            if (todayTiming === 'Closed') return false;
+
+            try {
+                const startMins = parseTime(todayTiming.start);
+                const endMins = parseTime(todayTiming.end);
+
+                // Handle overnight? (e.g. 10 PM to 2 AM). 
+                // For now assuming same-day timings as per UI (09:00 AM - 10:00 PM)
+                return currentMinutes >= startMins && currentMinutes <= endMins;
+            } catch (e) {
+                return true; // Error parsing, default open
+            }
+        }).map(p => {
+            // Clean up vendor object to not expose secrets, but keep storeTimings if needed by frontend
+            const { vendor, ...rest } = p;
+            return { ...rest, vendorName: vendor.name, vendorId: vendor._id };
+        });
+
         res.json(products);
     } catch (error) {
         res.status(500).json({ message: error.message });
