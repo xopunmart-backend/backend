@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { ObjectId } = require('mongodb');
 const jwt = require('jsonwebtoken');
+const admin = require('../firebase');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'xopunmart_secret_key_123';
 
@@ -87,6 +88,24 @@ router.patch('/:id/read', authenticateToken, async (req, res) => {
 
         res.json({ success: true });
     } catch (error) {
+        res.status(500).json({ message: "Server error" });
+    }
+});
+
+// POST /api/notifications/subscribe
+router.post('/subscribe', authenticateToken, async (req, res) => {
+    try {
+        const { token, topic } = req.body;
+        if (!token || !topic) {
+            return res.status(400).json({ message: "Token and topic required" });
+        }
+
+        await admin.messaging().subscribeToTopic(token, topic);
+        console.log(`Subscribed ${token.substring(0, 10)}... to ${topic}`);
+
+        res.json({ success: true, message: `Subscribed to ${topic}` });
+    } catch (error) {
+        console.error("Error subscribing to topic:", error);
         res.status(500).json({ message: "Server error" });
     }
 });
