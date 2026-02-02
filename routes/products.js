@@ -5,16 +5,16 @@ const router = express.Router();
 // GET all products (with optional vendorId filter)
 router.get('/', async (req, res) => {
     try {
-        const { vendorId, category } = req.query;
+        const { vendorId, category, approvalStatus } = req.query;
         const query = {};
         if (vendorId) {
             query.vendorId = new ObjectId(vendorId);
         }
         if (category) {
-            query.category = category; // Assuming category is stored as string name or ID. Based on current data it seems to be string name in some places, or ID. Let's check schemas if possible, but usually category name or ID. Sticking to simple string match or checking how category is stored. 
-            // Wait, looking at other files, category might be text. Let's assume text for now or ID if referring to category collection. 
-            // In add product, it just sends body. 
-            // Ideally should be consistent.
+            query.category = category;
+        }
+        if (approvalStatus) {
+            query.approvalStatus = approvalStatus;
         }
 
         // Fetch simple products list first
