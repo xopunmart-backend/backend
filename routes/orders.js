@@ -7,7 +7,7 @@ const { authenticateToken } = require('../middleware/auth');
 const { assignOrderToNearestRider, assignOrderBatchToNearestRider } = require('../utils/orderAssignment');
 const { sendToUser, sendToTopic } = require('../utils/notificationSender');
 
-const { sendToUser } = require('../utils/notificationSender');
+
 
 
 // POST /api/orders - Create new order(s) from cart
