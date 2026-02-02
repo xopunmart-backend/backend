@@ -5,7 +5,7 @@ const { v4: uuidv4 } = require('uuid');
 const admin = require('../firebase');
 const { authenticateToken } = require('../middleware/auth');
 const { assignOrderToNearestRider, assignOrderBatchToNearestRider } = require('../utils/orderAssignment');
-const { sendToUser } = require('../utils/notificationSender');
+const { sendToUser, sendToTopic } = require('../utils/notificationSender');
 
 const { sendToUser } = require('../utils/notificationSender');
 
@@ -302,6 +302,14 @@ router.post('/', async (req, res) => {
                 { $set: { items: [], updatedAt: new Date() } }
             );
         }
+
+        // Notify Admin
+        sendToTopic(
+            'admin_notifications',
+            'New Order Received! 🛍️',
+            `Order #${createdOrderIds[0].substring(createdOrderIds[0].length - 6).toUpperCase()} placed by ${customer ? customer.name : 'Customer'}`,
+            { type: 'order', orderId: createdOrderIds[0] }
+        );
 
         res.status(201).json({
             message: "Order placed successfully",

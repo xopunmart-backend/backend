@@ -91,6 +91,33 @@ const sendToUser = async (db, userId, title, body, data = {}) => {
     }
 };
 
+/**
+ * Send notification to a topic (e.g., 'admin_notifications')
+ * @param {string} topic - Topic name
+ * @param {string} title - Notification Title
+ * @param {string} body - Notification Body
+ * @param {Object} data - Additional data payload (optional)
+ */
+const sendToTopic = async (topic, title, body, data = {}) => {
+    try {
+        await admin.messaging().send({
+            topic: topic,
+            notification: {
+                title: title,
+                body: body,
+            },
+            data: {
+                ...data,
+                click_action: 'FLUTTER_NOTIFICATION_CLICK'
+            }
+        });
+        console.log(`Notification sent to topic ${topic}: ${title}`);
+    } catch (error) {
+        console.error(`Error sending notification to topic ${topic}:`, error);
+    }
+};
+
 module.exports = {
-    sendToUser
+    sendToUser,
+    sendToTopic
 };
