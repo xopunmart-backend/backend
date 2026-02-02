@@ -17,49 +17,26 @@ router.get('/', async (req, res) => {
             // Ideally should be consistent.
         }
 
-        const allProducts = await req.db.collection('products').aggregate([
-            { $match: query },
-            {
-                $lookup: {
-                    from: 'users',
-                    localField: 'vendorId',
-                    foreignField: '_id',
-                    as: 'vendor'
-                }
-            },
-            {
-                $unwind: '$vendor' // Unwind to access vendor fields easily
-            },
-            {
-                $addFields: {
-                    vendorName: '$vendor.name',
-                    vendorStoreTimings: '$vendor.storeTimings',
-                    isShopOpen: {
-                        $function: {
-                            body: function (storeTimings) {
-                                if (!storeTimings) return true; // Default to open if no timings
+        // Fetch simple products list first
+        const allProducts = await req.db.collection('products').find(query).toArray();
 
-                                // Get current time in India (IST) - adjusting for server timezone if needed
-                                // Assuming server is UTC, add 5.5 hours. 
-                                // If server is already local, this might need adjustment.
-                                // Best to use a library or consistent offset. 
-                                // Basic native implementation:
-                                const now = new Date();
-                                // Create date object for IST
-                                const offset = 5.5 * 60 * 60 * 1000;
-                                const istDate = new Date(now.getTime() + offset);
-                                // ACTUALLY: new Date().toLocaleString("en-US", {timeZone: "Asia/Kolkata"}) is better but $function might not support full node env.
-                                // MongoDB $function runs in JS engine on server. 
-                                // Let's simplify: Do filtering in APPLICATION layer (Node.js) after fetch, 
-                                // it is safer and easier to debug timezones.
-                            },
-                            args: ['$vendor.storeTimings'],
-                            lang: 'js'
-                        }
-                    }
-                }
+        // Manual Join with Vendors (Simulating $lookup) to avoid $function and free-tier limitations
+        // Get unique vendor IDs
+        const vendorIds = [...new Set(allProducts.map(p => p.vendorId).filter(id => id))];
+
+        // Fetch vendors
+        const vendors = await req.db.collection('users').find({ _id: { $in: vendorIds } }).toArray();
+        const vendorMap = {};
+        vendors.forEach(v => vendorMap[v._id.toString()] = v);
+
+        // Attach vendor to each product
+        allProducts.forEach(p => {
+            if (p.vendorId && vendorMap[p.vendorId.toString()]) {
+                p.vendor = vendorMap[p.vendorId.toString()];
+            } else {
+                p.vendor = {}; // Empty object if no vendor found
             }
-        ]).toArray();
+        });
 
         // Application Layer Filtering for Open/Closed logic
         const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
