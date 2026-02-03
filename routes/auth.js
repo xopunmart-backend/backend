@@ -430,6 +430,7 @@ router.put('/profile', async (req, res) => {
         }
 
         if (req.body.storeTimings) {
+            console.log(`[Profile Update] Updating store timings for user ${userId}:`, JSON.stringify(req.body.storeTimings));
             updates.storeTimings = req.body.storeTimings;
         }
 
