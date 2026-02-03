@@ -253,29 +253,14 @@ router.post('/', async (req, res) => {
 
             // 5. Notifications (Vendor)
             try {
-                // Find vendor token
-                let vendorToken = null;
-                const vendorUser = await req.db.collection('users').findOne({ _id: new ObjectId(vId) });
-                if (vendorUser && vendorUser.firebaseUid) {
-                    // Check 'vendors' or 'users' in Firestore
-                    const vDoc = await admin.firestore().collection('vendors').doc(vendorUser.firebaseUid).get();
-                    if (vDoc.exists) vendorToken = vDoc.data().fcmToken;
-                    else {
-                        const uDoc = await admin.firestore().collection('users').doc(vendorUser.firebaseUid).get();
-                        if (uDoc.exists) vendorToken = uDoc.data().fcmToken;
-                    }
-                }
-
-                if (vendorToken) {
-                    await admin.messaging().send({
-                        notification: {
-                            title: 'New Order Received',
-                            body: `You have received a new order of ₹${orderData.totalAmount}`
-                        },
-                        data: { type: 'order', orderId: orderId },
-                        token: vendorToken
-                    });
-                }
+                // Use centralized sender which saves to DB
+                await sendToUser(
+                    req.db,
+                    vId, // vendorId string
+                    'New Order Received',
+                    `You have received a new order of ₹${orderData.totalAmount}`,
+                    { type: 'order', orderId: orderId }
+                );
             } catch (e) {
                 console.error("Vendor Notification Error:", e);
             }
