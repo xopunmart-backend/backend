@@ -323,6 +323,7 @@ router.get('/profile', async (req, res) => {
             isOnline: user.isOnline,
             savedAddresses: user.savedAddresses || [],
             bankDetails: user.bankDetails || {},
+            storeTimings: user.storeTimings || {},
             firebaseUid: user.firebaseUid
         });
     } catch (error) {
