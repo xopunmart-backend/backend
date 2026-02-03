@@ -41,18 +41,15 @@ router.get('/', async (req, res) => {
         // Application Layer Filtering for Open/Closed logic
         const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
         const now = new Date();
-        // Adjust for IST (UTC+5:30) if server is UTC
-        // This is a naive check. For production, consider using moment-timezone or explicit offsets.
-        // Assuming server is UTC:
+        // Adjust for IST (UTC+5:30)
+        // Since server might be UTC, we add offset
         const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
-        const currentDay = days[istTime.getUTCDay()]; // getUTCDay because we added offset to make it "IST time" but as a UTC number
-        // Wait, better way:
+
         const options = { timeZone: 'Asia/Kolkata', hour12: true, hour: 'numeric', minute: 'numeric' };
         const formatter = new Intl.DateTimeFormat('en-US', { ...options, weekday: 'short' });
         const parts = formatter.formatToParts(now);
         const dayPart = parts.find(p => p.type === 'weekday').value; // "Mon", "Tue"
 
-        // Custom parser for "09:00 AM"
         const parseTime = (timeStr) => {
             const [time, modifier] = timeStr.split(' ');
             let [hours, minutes] = time.split(':');
@@ -66,11 +63,18 @@ router.get('/', async (req, res) => {
         const currentMinutes = istTime.getUTCHours() * 60 + istTime.getUTCMinutes();
 
         const products = allProducts.filter(product => {
-            const timings = product.vendor.storeTimings;
-            if (!timings) return true; // Default Open
+            // If manual override for availability is set to out-of-stock, use that?
+            // But user asked for TIMING based filtering.
 
-            const todayTiming = timings[dayPart] || timings[currentDay]; // Try matched day
-            if (!todayTiming) return true; // No timing for today, assume open? Or closed? Default Open.
+            if (!product.vendor || !product.vendor.storeTimings) return true; // Default Open if no data
+
+            const timings = product.vendor.storeTimings;
+            const todayTiming = timings[dayPart];
+
+            if (!todayTiming) return true; // Assume open if no timing set for today? Or closed? 
+            // Usually if no timing, it might mean closed, but let's be lenient or check requirement.
+            // User screenshot shows all days. If one is missing, maybe closed. 
+            // Let's assume Open if undefined to avoid mistakenly hiding everything.
 
             if (todayTiming === 'Closed') return false;
 
@@ -78,14 +82,12 @@ router.get('/', async (req, res) => {
                 const startMins = parseTime(todayTiming.start);
                 const endMins = parseTime(todayTiming.end);
 
-                // Handle overnight? (e.g. 10 PM to 2 AM). 
-                // For now assuming same-day timings as per UI (09:00 AM - 10:00 PM)
+                // Simple check for same-day timings
                 return currentMinutes >= startMins && currentMinutes <= endMins;
             } catch (e) {
                 return true; // Error parsing, default open
             }
         }).map(p => {
-            // Clean up vendor object to not expose secrets, but keep storeTimings if needed by frontend
             const { vendor, ...rest } = p;
             return { ...rest, vendorName: vendor.name, vendorId: vendor._id };
         });
