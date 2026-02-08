@@ -474,4 +474,78 @@ router.post('/fcm-token', async (req, res) => {
     }
 });
 
+// POST /api/auth/change-password
+router.post('/change-password', async (req, res) => {
+    try {
+        const token = req.headers.authorization?.split(' ')[1];
+        if (!token) {
+            return res.status(401).json({ message: "No token provided" });
+        }
+
+        let userId;
+        try {
+            // Verify JWT
+            const decoded = jwt.verify(token, JWT_SECRET);
+            userId = new ObjectId(decoded.id);
+        } catch (jwtError) {
+            // If JWT fails, try Firebase Token (for consistency, though usually app sends JWT for these ops)
+            try {
+                const decodedFirebase = await admin.auth().verifyIdToken(token);
+                const user = await req.db.collection('users').findOne({ $or: [{ firebaseUid: decodedFirebase.uid }, { email: decodedFirebase.email }] });
+                if (!user) return res.status(404).json({ message: "User not found" });
+                userId = user._id;
+            } catch (firebaseError) {
+                return res.status(401).json({ message: "Invalid token" });
+            }
+        }
+
+        const { currentPassword, newPassword } = req.body;
+
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({ message: "Current and new passwords are required" });
+        }
+
+        const user = await req.db.collection('users').findOne({ _id: userId });
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        // Verify current password
+        const isMatch = await bcrypt.compare(currentPassword, user.password);
+        if (!isMatch) {
+            return res.status(400).json({ message: "Incorrect current password" });
+        }
+
+        // Hash new password
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+        // Update MongoDB
+        await req.db.collection('users').updateOne(
+            { _id: userId },
+            { $set: { password: hashedPassword, updatedAt: new Date() } }
+        );
+
+        // Update Firebase Auth (if linked)
+        if (user.firebaseUid) {
+            try {
+                await admin.auth().updateUser(user.firebaseUid, {
+                    password: newPassword
+                });
+                console.log(`[Change Password] Updated Firebase password for ${user.email}`);
+            } catch (fbError) {
+                console.error("[Change Password] Failed to update Firebase password:", fbError);
+                // Don't fail the request if firebase update fails, but log it. 
+                // In a strict environment, we might want to rollback.
+            }
+        }
+
+        res.json({ success: true, message: "Password updated successfully" });
+
+    } catch (error) {
+        console.error("Change password error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+});
+
 module.exports = router;
