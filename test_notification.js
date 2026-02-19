@@ -6,7 +6,7 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 async function testNotification() {
-    const uri = process.env.MONGODB_URI || "mongodb://localhost:27017/xopunmart";
+    const uri = process.env.MONGO_URI || "mongodb://localhost:27017/xopunmart";
     const client = new MongoClient(uri);
 
     try {
@@ -14,18 +14,36 @@ async function testNotification() {
         const db = client.db();
         console.log("Connected to MongoDB");
 
-        // 1. Find a user with a firebaseUid (simulate finding a real user)
-        // You might need to adjust this query to find YOUR specific user if you know the email
-        const user = await db.collection('users').findOne({ firebaseUid: { $exists: true } });
+        // 1. Setup Test User
+        const testUid = "test_user_123";
+        const testEmail = "test@example.com";
 
-        if (!user) {
-            console.log("No user found with firebaseUid to test.");
-            return;
-        }
+        // Update/Insert Mongo User
+        await db.collection('users').updateOne(
+            { email: testEmail },
+            {
+                $set: {
+                    firebaseUid: testUid,
+                    name: "Test User",
+                    email: testEmail,
+                    role: "customer"
+                }
+            },
+            { upsert: true }
+        );
 
-        console.log(`Found user: ${user.email} (${user._id})`);
+        const user = await db.collection('users').findOne({ email: testEmail });
+        console.log(`Test user ready: ${user._id}`);
 
-        // 2. Send Notification
+        // 2. Setup Firestore Token (Dummy)
+        const dummyToken = "fcm_dummy_token_" + Date.now();
+        await admin.firestore().collection('users').doc(testUid).set({
+            fcmToken: dummyToken,
+            updatedAt: new Date()
+        });
+        console.log(`Dummy Firestore token set for ${testUid}`);
+
+        // 3. Send Notification
         await sendToUser(db, user._id, "Test Notification", "This is a test message from the backend script.", { type: 'system_test' });
 
         console.log("Test notification sent (check console for success/error from notificationSender)");
