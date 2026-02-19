@@ -87,7 +87,12 @@ const sendToUser = async (db, userId, title, body, data = {}) => {
         }
 
     } catch (error) {
-        console.error("Error sending notification:", error);
+        console.error(`Error sending notification to user ${userId}:`, error);
+        // Clean up invalid tokens if necessary (optional/advanced)
+        if (error.code === 'messaging/registration-token-not-registered') {
+            console.warn(`Token invalid for user ${userId}, consider removing from DB.`);
+            // await db.collection('users').updateOne({ _id: user._id }, { $unset: { fcmToken: "" } });
+        }
     }
 };
 
