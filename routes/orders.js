@@ -593,6 +593,7 @@ router.patch('/:id/accept', async (req, res) => {
     try {
         const { id } = req.params;
         let { riderId } = req.body;
+        console.log(`[Accept Route] Request to accept order ${id} by rider ${riderId}`);
 
         if (!riderId) return res.status(400).json({ message: "Rider ID required" });
 
@@ -604,7 +605,8 @@ router.patch('/:id/accept', async (req, res) => {
         // Transaction to ensure atomicity
         await admin.firestore().runTransaction(async (t) => {
             const doc = await t.get(orderRef);
-            if (!doc.exists) throw new Error("Order not found");
+            console.log(`[Accept Route] Fetched order ${id}, exists: ${doc.exists}`);
+            if (!doc.exists) throw new Error(`Order not found for ID: ${id}`);
 
             const data = doc.data();
 
