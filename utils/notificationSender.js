@@ -54,8 +54,20 @@ const sendToUser = async (db, userId, title, body, data = {}) => {
             }
         }
 
+        // 3. Save to MongoDB Notifications History FIRST (so it shows in-app always)
+        if (user && user._id) {
+            await db.collection('notifications').insertOne({
+                userId: user._id,
+                title,
+                message: body,
+                type: data.type || 'info',
+                isRead: false,
+                createdAt: new Date()
+            });
+        }
+
         if (!fcmToken) {
-            console.warn(`Notification skipped: No FCM token found for user ${userId} (UID: ${firebaseUid})`);
+            console.warn(`Push Notification skipped: No FCM token found for user ${userId} (UID: ${firebaseUid}). Saved to in-app history.`);
             return;
         }
 
@@ -72,19 +84,7 @@ const sendToUser = async (db, userId, title, body, data = {}) => {
             }
         });
 
-        console.log(`Notification sent to ${userId}: ${title}`);
-
-        // 4. Save to MongoDB Notifications History (Optional but good)
-        if (user && user._id) {
-            await db.collection('notifications').insertOne({
-                userId: user._id,
-                title,
-                message: body,
-                type: data.type || 'info',
-                isRead: false,
-                createdAt: new Date()
-            });
-        }
+        console.log(`Push Notification sent to ${userId}: ${title}`);
 
     } catch (error) {
         console.error(`Error sending notification to user ${userId}:`, error);
