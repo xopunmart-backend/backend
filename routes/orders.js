@@ -402,11 +402,11 @@ router.patch('/:id/status', async (req, res) => {
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
-        // 2. Post-Update Logic (Wallet, Rider Availability)
-        if (status === 'completed' || status === 'cancelled') {
-            const orderDoc = await orderRef.get();
-            const order = orderDoc.data();
+        // 2. Post-Update Logic (Wallet, Rider Availability, Notifications)
+        const orderDoc = await orderRef.get();
+        const order = orderDoc.data();
 
+        if (status === 'completed' || status === 'cancelled') {
             if (order) {
                 // Credit Wallet Logic (MongoDB)
                 if (status === 'completed' && order.paymentMethod !== 'COD_UNPAID') {
@@ -465,7 +465,7 @@ router.patch('/:id/status', async (req, res) => {
         }
 
         // --- NEW: Notify Customer ---
-        if (order.userId) {
+        if (order && order.userId) {
             let title = '';
             let body = '';
             // Normalize status to lowercase for comparison
@@ -644,6 +644,7 @@ router.patch('/:id/accept', async (req, res) => {
             for (const item of ordersToUpdate) {
                 t.update(item.ref, {
                     riderId: riderId,
+                    visibleToRiderId: riderId, // Keep visible to rider so active stream works
                     status: 'accepted',
                     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
                     riderAcceptedAt: admin.firestore.FieldValue.serverTimestamp()
