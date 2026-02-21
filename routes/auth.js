@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { ObjectId } = require('mongodb');
 const admin = require('../firebase');
+const { sendToUser } = require('../utils/notificationSender');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'xopunmart_secret_key_123';
 
@@ -161,6 +162,9 @@ router.post('/login', async (req, res) => {
             }
         });
 
+        // Send Login Alert
+        sendToUser(req.db, user._id, "Login Alert", "New login detected on your account.", { type: 'security' });
+
     } catch (error) {
         console.error("Login error:", error);
         res.status(500).json({ message: "Server error" });
@@ -240,6 +244,9 @@ router.post('/firebase-login', async (req, res) => {
                 firebaseUid: uid
             }
         });
+
+        // Send Login Alert
+        sendToUser(req.db, user._id, "Login Alert", "New login detected from Firebase on your account.", { type: 'security' });
 
     } catch (error) {
         console.error("Firebase Login Error:", error);

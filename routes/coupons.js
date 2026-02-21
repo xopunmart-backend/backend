@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { ObjectId } = require('mongodb');
 const { authenticateToken } = require('../middleware/auth');
+const { sendToUser } = require('../utils/notificationSender');
 
 // GET /api/coupons
 router.get('/', async (req, res) => {
@@ -37,7 +38,29 @@ router.post('/', authenticateToken, async (req, res) => {
         const result = await req.db.collection('coupons').insertOne(newCoupon);
         newCoupon._id = result.insertedId;
 
-        res.json(newCoupon);
+        // Broadcast to all customers asynchronously
+        (async () => {
+            try {
+                const customers = await req.db.collection('users').find({ role: 'customer' }).toArray();
+                const discountText = newCoupon.discountType === 'percentage'
+                    ? `${newCoupon.discountValue}% OFF`
+                    : `₹${newCoupon.discountValue} OFF`;
+
+                for (const customer of customers) {
+                    await sendToUser(
+                        req.db,
+                        customer._id,
+                        "Flash Sale Alert! 🏷️",
+                        `Use code ${newCoupon.code} to get ${discountText}. ${newCoupon.description}`,
+                        { type: 'promo' }
+                    );
+                }
+            } catch (err) {
+                console.error("Failed to broadcast coupon notification:", err);
+            }
+        })();
+
+        res.status(201).json(newCoupon);
     } catch (error) {
         console.error("Error creating coupon:", error);
         res.status(500).json({ message: "Server error" });
