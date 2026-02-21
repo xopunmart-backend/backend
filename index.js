@@ -74,17 +74,44 @@ app.listen(port, '0.0.0.0', () => {
             const db = client.db('xopunmart');
             const threshold = new Date(Date.now() - 2 * 60 * 1000); // 2 minutes ago
 
-            const result = await db.collection('users').updateMany(
-                {
-                    role: 'rider',
-                    isOnline: true,
-                    lastSeen: { $lt: threshold }
-                },
-                { $set: { isOnline: false } }
-            );
+            // Find riders who need to go offline so we can sync them to Firestore
+            const expiredRiders = await db.collection('users').find({
+                role: 'rider',
+                isOnline: true,
+                lastSeen: { $lt: threshold }
+            }).toArray();
 
-            if (result.modifiedCount > 0) {
-                console.log(`Auto-offline: Marked ${result.modifiedCount} riders offline.`);
+            if (expiredRiders.length > 0) {
+                const expiredIds = expiredRiders.map(r => r._id);
+
+                // Update MongoDB
+                await db.collection('users').updateMany(
+                    { _id: { $in: expiredIds } },
+                    {
+                        $set: {
+                            isOnline: false,
+                            status: 'offline',
+                            isAvailable: false
+                        }
+                    }
+                );
+
+                // Sync to Firestore
+                const admin = require('./firebase');
+                for (const rider of expiredRiders) {
+                    if (rider.firebaseUid) {
+                        try {
+                            await admin.firestore().collection('users').doc(rider.firebaseUid).set({
+                                isOnline: false,
+                                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                            }, { merge: true });
+                        } catch (err) {
+                            console.error(`Failed to sync auto-offline to Firestore for ${rider.firebaseUid}:`, err);
+                        }
+                    }
+                }
+
+                console.log(`Auto-offline: Marked ${expiredRiders.length} riders offline.`);
             }
         } catch (e) {
             console.error("Auto-offline job error:", e);

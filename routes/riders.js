@@ -120,7 +120,8 @@ router.patch('/:id/location', async (req, res) => {
                         latitude: parseFloat(latitude),
                         longitude: parseFloat(longitude),
                         updatedAt: new Date()
-                    }
+                    },
+                    lastSeen: new Date()
                 }
             }
         );
