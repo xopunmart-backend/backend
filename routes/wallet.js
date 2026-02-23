@@ -97,13 +97,19 @@ router.get('/', authenticateToken, async (req, res) => {
 
                 const snapshot = await admin.firestore().collection('orders')
                     .where('status', '==', 'completed')
-                    .where('createdAt', '>=', today)
                     .get();
 
                 snapshot.forEach(doc => {
                     const orderData = doc.data();
                     if (orderData.riderId === riderIdStr || orderData.riderId === firebaseUid) {
-                        todayTripsCount++;
+                        // Check if completed today
+                        const timestamp = orderData.updatedAt || orderData.createdAt;
+                        if (timestamp) {
+                            const date = timestamp.toDate();
+                            if (date >= today) {
+                                todayTripsCount++;
+                            }
+                        }
                     }
                 });
                 todayTrips = todayTripsCount;
