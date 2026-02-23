@@ -85,15 +85,32 @@ router.get('/', authenticateToken, async (req, res) => {
         let todayTrips = 0;
         let onlineHours = "0h 0m";
 
-        if (req.user.role === 'rider') {
+        if (user.role === 'rider') {
             const today = new Date();
             today.setHours(0, 0, 0, 0);
 
-            todayTrips = await req.db.collection('orders').countDocuments({
-                riderId: userId.toString(),
-                status: 'completed',
-                updatedAt: { $gte: today }
-            });
+            // Fetch today's completed orders for rider from Firestore
+            let todayTripsCount = 0;
+            try {
+                const firebaseUid = user.firebaseUid;
+                const riderIdStr = userId.toString();
+
+                const snapshot = await admin.firestore().collection('orders')
+                    .where('status', '==', 'completed')
+                    .where('createdAt', '>=', today)
+                    .get();
+
+                snapshot.forEach(doc => {
+                    const orderData = doc.data();
+                    if (orderData.riderId === riderIdStr || orderData.riderId === firebaseUid) {
+                        todayTripsCount++;
+                    }
+                });
+                todayTrips = todayTripsCount;
+            } catch (err) {
+                console.error("Error fetching today's trips from Firestore:", err);
+            }
+
             // We can mock onlineHours for now or calculate later
             onlineHours = "0h 0m";
         }
