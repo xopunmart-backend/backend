@@ -461,66 +461,85 @@ router.patch('/:id/status', async (req, res) => {
                     } else {
                         riderQuery = { firebaseUid: order.riderId };
                     }
+                    let updateOp = { $set: { isAvailable: true } };
+                    let rEarning = typeof order.riderEarning === 'number' ? order.riderEarning : 15;
+
+                    if (status === 'completed') {
+                        updateOp.$inc = { walletBalance: rEarning };
+                    }
 
                     await req.db.collection('users').updateOne(
                         riderQuery,
-                        { $set: { isAvailable: true } }
+                        updateOp
                     );
+
+                    if (status === 'completed') {
+                        const rUser = await req.db.collection('users').findOne(riderQuery);
+                        if (rUser) {
+                            await req.db.collection('transactions').insertOne({
+                                userId: rUser._id,
+                                type: 'credit',
+                                amount: rEarning,
+                                description: `Delivery Earnings #${id.substring(id.length - 6).toUpperCase()}`,
+                                orderId: id,
+                                createdAt: new Date()
+                            });
+                        }
+                    }
                 }
             }
-        }
 
-        // --- NEW: Notify Customer ---
-        if (order && order.userId) {
-            let title = '';
-            let body = '';
-            // Normalize status to lowercase for comparison
-            const s = status.toLowerCase();
+            // --- NEW: Notify Customer ---
+            if (order && order.userId) {
+                let title = '';
+                let body = '';
+                // Normalize status to lowercase for comparison
+                const s = status.toLowerCase();
 
-            switch (s) {
-                case 'confirmed':
-                    title = 'Order Confirmed! ✅';
-                    body = `Your order #${id.substring(id.length - 6).toUpperCase()} has been confirmed.`;
-                    break;
-                case 'preparing':
-                    title = 'Preparing your Order 🍳';
-                    body = 'The restaurant is preparing your food.';
-                    break;
-                case 'ready':
-                    title = 'Order Ready 🥡';
-                    body = 'Your order is packed and waiting for pickup.';
-                    break;
-                case 'out_for_delivery':
-                case 'picked_up':
-                    title = 'Out for Delivery 🛵';
-                    body = 'Your rider is on the way!';
-                    break;
-                case 'completed':
-                case 'delivered':
-                    title = 'Delivered 🎉';
-                    body = 'Your order has been delivered. Enjoy!';
-                    break;
-                case 'cancelled':
-                    title = 'Order Cancelled ❌';
-                    body = 'Your order has been cancelled.';
-                    break;
+                switch (s) {
+                    case 'confirmed':
+                        title = 'Order Confirmed! ✅';
+                        body = `Your order #${id.substring(id.length - 6).toUpperCase()} has been confirmed.`;
+                        break;
+                    case 'preparing':
+                        title = 'Preparing your Order 🍳';
+                        body = 'The restaurant is preparing your food.';
+                        break;
+                    case 'ready':
+                        title = 'Order Ready 🥡';
+                        body = 'Your order is packed and waiting for pickup.';
+                        break;
+                    case 'out_for_delivery':
+                    case 'picked_up':
+                        title = 'Out for Delivery 🛵';
+                        body = 'Your rider is on the way!';
+                        break;
+                    case 'completed':
+                    case 'delivered':
+                        title = 'Delivered 🎉';
+                        body = 'Your order has been delivered. Enjoy!';
+                        break;
+                    case 'cancelled':
+                        title = 'Order Cancelled ❌';
+                        body = 'Your order has been cancelled.';
+                        break;
+                }
+
+                if (title && body) {
+                    // Async call - don't await blocking response
+                    // Pass userId (usually MongoID string) directly
+                    sendToUser(req.db, order.userId, title, body, { type: 'order', orderId: id });
+                }
             }
+            // ----------------------------
 
-            if (title && body) {
-                // Async call - don't await blocking response
-                // Pass userId (usually MongoID string) directly
-                sendToUser(req.db, order.userId, title, body, { type: 'order', orderId: id });
-            }
+
+            res.json({ message: "Order status updated", status });
+        } catch (error) {
+            console.error("Update status error:", error);
+            res.status(500).json({ message: error.message });
         }
-        // ----------------------------
-
-
-        res.json({ message: "Order status updated", status });
-    } catch (error) {
-        console.error("Update status error:", error);
-        res.status(500).json({ message: error.message });
-    }
-});
+    });
 
 // GET /api/orders/available - Get orders ready for pickup
 router.get('/available', async (req, res) => {
