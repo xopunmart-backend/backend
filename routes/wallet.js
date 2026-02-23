@@ -81,9 +81,28 @@ router.get('/', authenticateToken, async (req, res) => {
             .limit(50)
             .toArray();
 
+        // 3. Get Today's Trips for Rider
+        let todayTrips = 0;
+        let onlineHours = "0h 0m";
+
+        if (req.user.role === 'rider') {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            todayTrips = await req.db.collection('orders').countDocuments({
+                riderId: userId.toString(),
+                status: 'completed',
+                updatedAt: { $gte: today }
+            });
+            // We can mock onlineHours for now or calculate later
+            onlineHours = "0h 0m";
+        }
+
         res.json({
             balance: balance,
-            transactions: transactions
+            transactions: transactions,
+            todayTrips: todayTrips,
+            onlineHours: onlineHours
         });
 
     } catch (error) {
