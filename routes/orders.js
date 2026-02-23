@@ -601,6 +601,13 @@ router.patch('/:id/accept', async (req, res) => {
 
         let assignedRiderId = riderId;
         // Normalize Rider ID (Use Firebase UID preference if available)
+        let firebaseUidForVisibility = riderId;
+        if (ObjectId.isValid(riderId)) {
+            const riderDoc = await req.db.collection('users').findOne({ _id: new ObjectId(riderId) });
+            if (riderDoc && riderDoc.firebaseUid) {
+                firebaseUidForVisibility = riderDoc.firebaseUid;
+            }
+        }
 
         // Transaction to ensure atomicity
         await admin.firestore().runTransaction(async (t) => {
@@ -644,7 +651,7 @@ router.patch('/:id/accept', async (req, res) => {
             for (const item of ordersToUpdate) {
                 t.update(item.ref, {
                     riderId: riderId,
-                    visibleToRiderId: riderId, // Keep visible to rider so active stream works
+                    visibleToRiderId: firebaseUidForVisibility, // Keep visible to rider so active stream works using Firebase UID
                     status: 'accepted',
                     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
                     riderAcceptedAt: admin.firestore.FieldValue.serverTimestamp()
