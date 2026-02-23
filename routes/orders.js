@@ -71,46 +71,52 @@ router.post('/', async (req, res) => {
             if (!vendorOrders[vId]) {
                 const vendorUser = await req.db.collection('users').findOne({ _id: product.vendorId });
 
-                // Check Store Timings
-                if (vendorUser && vendorUser.storeTimings) {
-                    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-                    // IST Offset
-                    const now = new Date();
-                    const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
-
-                    const options = { timeZone: 'Asia/Kolkata', hour12: true, hour: 'numeric', minute: 'numeric' };
-                    const formatter = new Intl.DateTimeFormat('en-US', { ...options, weekday: 'short' });
-                    const parts = formatter.formatToParts(now);
-                    const dayPart = parts.find(p => p.type === 'weekday').value;
-
-                    const timings = vendorUser.storeTimings;
-                    const todayTiming = timings[dayPart];
-
-                    if (todayTiming === 'Closed') {
-                        return res.status(400).json({ message: `Shop ${vendorUser.name} is currently closed.` });
+                // Check Store Status and Timings
+                if (vendorUser) {
+                    if (vendorUser.isOnline === false) {
+                        return res.status(400).json({ message: `Shop ${vendorUser.name || 'Vendor'} is currently closed.` });
                     }
 
-                    if (todayTiming) {
-                        const parseTime = (timeStr) => {
-                            const [time, modifier] = timeStr.split(' ');
-                            let [hours, minutes] = time.split(':');
-                            hours = parseInt(hours, 10);
-                            minutes = parseInt(minutes, 10);
-                            if (hours === 12 && modifier === 'AM') hours = 0;
-                            if (hours !== 12 && modifier === 'PM') hours += 12;
-                            return hours * 60 + minutes;
-                        };
+                    if (vendorUser.storeTimings) {
+                        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                        // IST Offset
+                        const now = new Date();
+                        const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
 
-                        try {
-                            const currentMinutes = istTime.getUTCHours() * 60 + istTime.getUTCMinutes();
-                            const startMins = parseTime(todayTiming.start);
-                            const endMins = parseTime(todayTiming.end);
+                        const options = { timeZone: 'Asia/Kolkata', hour12: true, hour: 'numeric', minute: 'numeric' };
+                        const formatter = new Intl.DateTimeFormat('en-US', { ...options, weekday: 'short' });
+                        const parts = formatter.formatToParts(now);
+                        const dayPart = parts.find(p => p.type === 'weekday').value;
 
-                            if (currentMinutes < startMins || currentMinutes > endMins) {
-                                return res.status(400).json({ message: `Shop ${vendorUser.name} is currently closed. Opens at ${todayTiming.start}` });
+                        const timings = vendorUser.storeTimings;
+                        const todayTiming = timings[dayPart];
+
+                        if (todayTiming === 'Closed') {
+                            return res.status(400).json({ message: `Shop ${vendorUser.name} is currently closed.` });
+                        }
+
+                        if (todayTiming) {
+                            const parseTime = (timeStr) => {
+                                const [time, modifier] = timeStr.split(' ');
+                                let [hours, minutes] = time.split(':');
+                                hours = parseInt(hours, 10);
+                                minutes = parseInt(minutes, 10);
+                                if (hours === 12 && modifier === 'AM') hours = 0;
+                                if (hours !== 12 && modifier === 'PM') hours += 12;
+                                return hours * 60 + minutes;
+                            };
+
+                            try {
+                                const currentMinutes = istTime.getUTCHours() * 60 + istTime.getUTCMinutes();
+                                const startMins = parseTime(todayTiming.start);
+                                const endMins = parseTime(todayTiming.end);
+
+                                if (currentMinutes < startMins || currentMinutes > endMins) {
+                                    return res.status(400).json({ message: `Shop ${vendorUser.name} is currently closed. Opens at ${todayTiming.start}` });
+                                }
+                            } catch (e) {
+                                // Ignore parsing error, allow order
                             }
-                        } catch (e) {
-                            // Ignore parsing error, allow order
                         }
                     }
                 }

@@ -63,10 +63,12 @@ router.get('/', async (req, res) => {
         const currentMinutes = istTime.getUTCHours() * 60 + istTime.getUTCMinutes();
 
         const products = allProducts.filter(product => {
-            // If manual override for availability is set to out-of-stock, use that?
-            // But user asked for TIMING based filtering.
+            if (!product.vendor) return true;
 
-            if (!product.vendor || !product.vendor.storeTimings) return true; // Default Open if no data
+            // Respect manual offline toggle from Vendor App
+            if (product.vendor.isOnline === false) return false;
+
+            if (!product.vendor.storeTimings) return true; // Default Open if no data
 
             const timings = product.vendor.storeTimings;
             const todayTiming = timings[dayPart];
