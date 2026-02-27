@@ -65,7 +65,7 @@ router.get('/', authenticateToken, async (req, res) => {
         // 1. Get User Balance
         const user = await req.db.collection('users').findOne(
             { _id: userId },
-            { projection: { walletBalance: 1 } }
+            { projection: { walletBalance: 1, role: 1, firebaseUid: 1 } }
         );
 
         if (!user) {
