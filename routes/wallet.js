@@ -105,8 +105,17 @@ router.get('/', authenticateToken, async (req, res) => {
                         // Check if completed today
                         const timestamp = orderData.updatedAt || orderData.createdAt;
                         if (timestamp) {
-                            const date = timestamp.toDate();
-                            if (date >= today) {
+                            let date;
+                            // Handle both Firestore Timestamp and JS Date
+                            if (typeof timestamp.toDate === 'function') {
+                                date = timestamp.toDate();
+                            } else if (timestamp instanceof Date) {
+                                date = timestamp;
+                            } else if (typeof timestamp === 'string') {
+                                date = new Date(timestamp);
+                            }
+
+                            if (date && date >= today) {
                                 todayTripsCount++;
                             }
                         }
