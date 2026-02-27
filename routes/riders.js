@@ -57,10 +57,39 @@ router.patch('/:id/status', async (req, res) => {
         if (status === 'online') {
             updates.isOnline = true;
             updates.isAvailable = true; // Mark as available for orders
+
+            // Record when they went online to calculate duration later
+            updates.lastOnlineAt = new Date();
         }
         if (status === 'offline') {
             updates.isOnline = false;
             updates.isAvailable = false;
+
+            // Calculate how long they were online and add to today's total
+            const riderDoc = await req.db.collection('users').findOne({ _id: new ObjectId(id) });
+            if (riderDoc && riderDoc.lastOnlineAt) {
+                const now = new Date();
+                const lastOnline = new Date(riderDoc.lastOnlineAt);
+
+                // Only count time if they went online today
+                if (now.toDateString() === lastOnline.toDateString()) {
+                    const diffMs = now - lastOnline;
+                    const diffMinutes = Math.floor(diffMs / 60000);
+
+                    if (diffMinutes > 0) {
+                        // Check if we already have accumulated minutes for today
+                        let todayMinutes = 0;
+                        if (riderDoc.onlineSessions && riderDoc.onlineSessions.date === now.toDateString()) {
+                            todayMinutes = riderDoc.onlineSessions.minutes || 0;
+                        }
+
+                        updates.onlineSessions = {
+                            date: now.toDateString(),
+                            minutes: todayMinutes + diffMinutes
+                        };
+                    }
+                }
+            }
         }
 
         // Save Firebase UID if provided (Linkage Step)

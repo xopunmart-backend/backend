@@ -65,7 +65,7 @@ router.get('/', authenticateToken, async (req, res) => {
         // 1. Get User Balance
         const user = await req.db.collection('users').findOne(
             { _id: userId },
-            { projection: { walletBalance: 1, role: 1, firebaseUid: 1 } }
+            { projection: { walletBalance: 1, role: 1, firebaseUid: 1, isOnline: 1, lastOnlineAt: 1, onlineSessions: 1 } }
         );
 
         if (!user) {
@@ -126,8 +126,27 @@ router.get('/', authenticateToken, async (req, res) => {
                 console.error("Error fetching today's trips from Firestore:", err);
             }
 
-            // We can mock onlineHours for now or calculate later
-            onlineHours = "0h 0m";
+            // Calculate onlineHours
+            let totalMinutes = 0;
+            const now = new Date();
+
+            // Add accumulated minutes from already-closed offline sessions today
+            if (user.onlineSessions && user.onlineSessions.date === now.toDateString()) {
+                totalMinutes += (user.onlineSessions.minutes || 0);
+            }
+
+            // Add minutes from the currently active ongoing session
+            if (user.isOnline && user.lastOnlineAt) {
+                const lastOnline = new Date(user.lastOnlineAt);
+                if (now.toDateString() === lastOnline.toDateString()) {
+                    const diffMs = now - lastOnline;
+                    totalMinutes += Math.floor(diffMs / 60000);
+                }
+            }
+
+            const hrs = Math.floor(totalMinutes / 60);
+            const mins = totalMinutes % 60;
+            onlineHours = `${hrs}h ${mins}m`;
         }
 
         res.json({
