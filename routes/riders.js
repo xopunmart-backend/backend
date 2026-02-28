@@ -216,4 +216,97 @@ router.post('/:id/heartbeat', async (req, res) => {
     }
 });
 
+// GET /api/riders/:id/analytics
+router.get('/:id/analytics', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const db = req.db;
+
+        // Verify rider exists
+        const user = await db.collection('users').findOne(
+            { _id: new ObjectId(id) },
+            { projection: { firebaseUid: 1, role: 1 } }
+        );
+
+        if (!user || user.role !== 'rider') {
+            return res.status(404).json({ message: "Rider not found" });
+        }
+
+        const firebaseUid = user.firebaseUid;
+        const riderIdStr = id.toString();
+
+        // Calculate date range (last 7 days including today)
+        const now = new Date();
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+        const weekStart = new Date(startOfToday);
+        weekStart.setDate(weekStart.getDate() - 6); // 7 days total including today
+
+        // Fetch orders from Firestore 
+        const snapshot = await admin.firestore().collection('orders')
+            .where('status', '==', 'completed')
+            .get();
+
+        const dailyStats = [];
+        // Initialize daily stats array with 0s for the last 7 days
+        for (let i = 6; i >= 0; i--) {
+            const date = new Date(startOfToday);
+            date.setDate(date.getDate() - i);
+            dailyStats.push({
+                date: date.toISOString().split('T')[0], // YYYY-MM-DD
+                earnings: 0,
+                trips: 0
+            });
+        }
+
+        let thisWeekEarnings = 0;
+        let thisWeekTrips = 0;
+
+        snapshot.forEach(doc => {
+            const orderData = doc.data();
+
+            // Match rider
+            if (orderData.riderId === riderIdStr || orderData.riderId === firebaseUid) {
+                const timestamp = orderData.updatedAt || orderData.createdAt;
+                if (timestamp) {
+                    let date;
+                    if (typeof timestamp.toDate === 'function') {
+                        date = timestamp.toDate();
+                    } else if (timestamp instanceof Date) {
+                        date = timestamp;
+                    } else if (typeof timestamp === 'string') {
+                        date = new Date(timestamp);
+                    }
+
+                    // Check if the order falls within our 7-day window
+                    if (date && date >= weekStart) {
+                        const orderDateStr = date.toISOString().split('T')[0];
+                        const statIndex = dailyStats.findIndex(s => s.date === orderDateStr);
+
+                        if (statIndex !== -1) {
+                            const earning = parseFloat(orderData.deliveryFee || 15); // Default delivery fee 15 if missing
+
+                            dailyStats[statIndex].earnings += earning;
+                            dailyStats[statIndex].trips += 1;
+
+                            thisWeekEarnings += earning;
+                            thisWeekTrips += 1;
+                        }
+                    }
+                }
+            }
+        });
+
+        res.json({
+            thisWeekEarnings: thisWeekEarnings,
+            thisWeekTrips: thisWeekTrips,
+            dailyStats: dailyStats
+        });
+
+    } catch (error) {
+        console.error("Analytics fetch error:", error);
+        res.status(500).json({ message: "Server error fetching analytics" });
+    }
+});
+
 module.exports = router;
