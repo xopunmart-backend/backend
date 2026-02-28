@@ -98,16 +98,15 @@ app.listen(port, '0.0.0.0', () => {
                         const lastOnline = new Date(rider.lastOnlineAt);
                         if (now.toDateString() === lastOnline.toDateString()) {
                             const diffMs = now - lastOnline;
-                            const diffMinutes = Math.floor(diffMs / 60000);
 
-                            if (diffMinutes > 0) {
-                                let todayMinutes = 0;
+                            if (diffMs > 0) {
+                                let todayMs = 0;
                                 if (rider.onlineSessions && rider.onlineSessions.date === now.toDateString()) {
-                                    todayMinutes = rider.onlineSessions.minutes || 0;
+                                    todayMs = rider.onlineSessions.totalMs || 0;
                                 }
                                 updates.onlineSessions = {
                                     date: now.toDateString(),
-                                    minutes: todayMinutes + diffMinutes
+                                    totalMs: todayMs + diffMs
                                 };
                             }
                         }

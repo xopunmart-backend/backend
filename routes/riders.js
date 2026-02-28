@@ -77,18 +77,17 @@ router.patch('/:id/status', async (req, res) => {
                 // Only count time if they went online today
                 if (now.toDateString() === lastOnline.toDateString()) {
                     const diffMs = now - lastOnline;
-                    const diffMinutes = Math.floor(diffMs / 60000);
 
-                    if (diffMinutes > 0) {
-                        // Check if we already have accumulated minutes for today
-                        let todayMinutes = 0;
+                    if (diffMs > 0) {
+                        // Check if we already have accumulated ms for today
+                        let todayMs = 0;
                         if (riderDoc.onlineSessions && riderDoc.onlineSessions.date === now.toDateString()) {
-                            todayMinutes = riderDoc.onlineSessions.minutes || 0;
+                            todayMs = riderDoc.onlineSessions.totalMs || 0;
                         }
 
                         updates.onlineSessions = {
                             date: now.toDateString(),
-                            minutes: todayMinutes + diffMinutes
+                            totalMs: todayMs + diffMs
                         };
                     }
                 }

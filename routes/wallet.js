@@ -127,22 +127,23 @@ router.get('/', authenticateToken, async (req, res) => {
             }
 
             // Calculate onlineHours
-            let totalMinutes = 0;
+            let totalMs = 0;
             const now = new Date();
 
-            // Add accumulated minutes from already-closed offline sessions today
+            // Add accumulated ms from already-closed offline sessions today
             if (user.onlineSessions && user.onlineSessions.date === now.toDateString()) {
-                totalMinutes += (user.onlineSessions.minutes || 0);
+                totalMs += (user.onlineSessions.totalMs || (user.onlineSessions.minutes ? user.onlineSessions.minutes * 60000 : 0));
             }
 
-            // Add minutes from the currently active ongoing session
+            // Add ms from the currently active ongoing session
             if (user.isOnline && user.lastOnlineAt) {
                 const lastOnline = new Date(user.lastOnlineAt);
                 if (now.toDateString() === lastOnline.toDateString()) {
-                    const diffMs = now - lastOnline;
-                    totalMinutes += Math.floor(diffMs / 60000);
+                    totalMs += (now - lastOnline);
                 }
             }
+
+            const totalMinutes = Math.floor(totalMs / 60000);
 
             const hrs = Math.floor(totalMinutes / 60);
             const mins = totalMinutes % 60;
