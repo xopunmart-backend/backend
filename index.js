@@ -82,23 +82,44 @@ app.listen(port, '0.0.0.0', () => {
             }).toArray();
 
             if (expiredRiders.length > 0) {
-                const expiredIds = expiredRiders.map(r => r._id);
+                const admin = require('./firebase');
+                const now = new Date();
 
-                // Update MongoDB
-                await db.collection('users').updateMany(
-                    { _id: { $in: expiredIds } },
-                    {
-                        $set: {
-                            isOnline: false,
-                            status: 'offline',
-                            isAvailable: false
+                // Process each rider individually to accumulate their online hours
+                for (const rider of expiredRiders) {
+                    const updates = {
+                        isOnline: false,
+                        status: 'offline',
+                        isAvailable: false
+                    };
+
+                    // Accummulate time if they had a lastOnlineAt today
+                    if (rider.lastOnlineAt) {
+                        const lastOnline = new Date(rider.lastOnlineAt);
+                        if (now.toDateString() === lastOnline.toDateString()) {
+                            const diffMs = now - lastOnline;
+                            const diffMinutes = Math.floor(diffMs / 60000);
+
+                            if (diffMinutes > 0) {
+                                let todayMinutes = 0;
+                                if (rider.onlineSessions && rider.onlineSessions.date === now.toDateString()) {
+                                    todayMinutes = rider.onlineSessions.minutes || 0;
+                                }
+                                updates.onlineSessions = {
+                                    date: now.toDateString(),
+                                    minutes: todayMinutes + diffMinutes
+                                };
+                            }
                         }
                     }
-                );
 
-                // Sync to Firestore
-                const admin = require('./firebase');
-                for (const rider of expiredRiders) {
+                    // Update MongoDB
+                    await db.collection('users').updateOne(
+                        { _id: rider._id },
+                        { $set: updates }
+                    );
+
+                    // Sync to Firestore
                     if (rider.firebaseUid) {
                         try {
                             await admin.firestore().collection('users').doc(rider.firebaseUid).set({
@@ -111,7 +132,7 @@ app.listen(port, '0.0.0.0', () => {
                     }
                 }
 
-                console.log(`Auto-offline: Marked ${expiredRiders.length} riders offline.`);
+                console.log(`Auto-offline: Marked ${expiredRiders.length} riders offline and accumulated hours.`);
             }
         } catch (e) {
             console.error("Auto-offline job error:", e);
