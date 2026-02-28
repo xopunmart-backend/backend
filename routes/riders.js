@@ -54,20 +54,23 @@ router.patch('/:id/status', async (req, res) => {
         };
 
         // Map status to boolean isOnline
+        const riderDoc = await req.db.collection('users').findOne({ _id: new ObjectId(id) });
+
         if (status === 'online') {
             updates.isOnline = true;
             updates.isAvailable = true; // Mark as available for orders
 
-            // Record when they went online to calculate duration later
-            updates.lastOnlineAt = new Date();
+            // Only record when they went online if they weren't already online
+            if (!riderDoc || !riderDoc.isOnline) {
+                updates.lastOnlineAt = new Date();
+            }
         }
         if (status === 'offline') {
             updates.isOnline = false;
             updates.isAvailable = false;
 
             // Calculate how long they were online and add to today's total
-            const riderDoc = await req.db.collection('users').findOne({ _id: new ObjectId(id) });
-            if (riderDoc && riderDoc.lastOnlineAt) {
+            if (riderDoc && riderDoc.lastOnlineAt && riderDoc.isOnline !== false) {
                 const now = new Date();
                 const lastOnline = new Date(riderDoc.lastOnlineAt);
 
