@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const { ObjectId } = require('mongodb');
-const { v4: uuidv4 } = require('uuid');
 const admin = require('../firebase');
 const { authenticateToken } = require('../middleware/auth');
 const { assignOrderToNearestRider, assignOrderBatchToNearestRider } = require('../utils/orderAssignment');
