@@ -56,6 +56,47 @@ router.get('/admin/all-transactions', async (req, res) => {
     }
 });
 
+// PUT /api/wallet/admin/transaction/status
+router.put('/admin/transaction/status', async (req, res) => {
+    try {
+        const { transactionId, status } = req.body; // status: 'processed' or 'rejected'
+
+        if (!transactionId || !['processed', 'rejected'].includes(status)) {
+            return res.status(400).json({ message: "Invalid request data" });
+        }
+
+        const txId = new ObjectId(transactionId);
+        const transaction = await req.db.collection('transactions').findOne({ _id: txId });
+
+        if (!transaction) {
+            return res.status(404).json({ message: "Transaction not found" });
+        }
+
+        if (transaction.status !== 'pending') {
+            return res.status(400).json({ message: `Transaction already ${transaction.status}` });
+        }
+
+        if (status === 'rejected') {
+            // Refund the user's wallet balance
+            await req.db.collection('users').updateOne(
+                { _id: transaction.userId },
+                { $inc: { walletBalance: transaction.amount } }
+            );
+        }
+
+        // Update the transaction status
+        await req.db.collection('transactions').updateOne(
+            { _id: txId },
+            { $set: { status: status, processedAt: new Date() } }
+        );
+
+        res.json({ success: true, message: `Transaction ${status} successfully` });
+    } catch (error) {
+        console.error("Update transaction status error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+});
+
 // GET /api/wallet
 // Get wallet balance and transaction history
 router.get('/', authenticateToken, async (req, res) => {
