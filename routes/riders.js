@@ -17,7 +17,119 @@ router.get('/', async (req, res) => {
     }
 });
 
+// GET /api/riders/settlements
+router.get('/settlements', async (req, res) => {
+    try {
+        // 1. Fetch all riders
+        const riders = await req.db.collection('users')
+            .find({ role: 'rider' })
+            .project({ name: 1, phoneNumber: 1, profileImage: 1, firebaseUid: 1 })
+            .toArray();
 
+        // 2. Fetch all completed/delivered orders from Firestore
+        const completedOrdersSnapshot = await admin.firestore().collection('orders')
+            .where('status', 'in', ['completed', 'delivered'])
+            .get();
+
+        const riderSettlements = new Map();
+
+        // 3. Initialize mapping for easy lookup
+        riders.forEach(rider => {
+            const idStr = rider._id.toString();
+            riderSettlements.set(idStr, {
+                ...rider,
+                id: idStr,
+                pendingCod: 0,
+                upiReceived: 0,
+                ordersCount: 0
+            });
+            if (rider.firebaseUid) {
+                // Also map by firebaseUid just in case orders use it
+                riderSettlements.set(rider.firebaseUid, riderSettlements.get(idStr));
+            }
+        });
+
+        // 4. Calculate pending amounts per rider
+        completedOrdersSnapshot.forEach(doc => {
+            const order = doc.data();
+
+            // Skip if admin already marked this cash as settled
+            if (order.isCashSettled) return;
+
+            const rId = order.riderId;
+            if (rId && riderSettlements.has(rId)) {
+                const settlementData = riderSettlements.get(rId);
+                const paymentMethod = order.paymentMethod || 'COD';
+                const amount = parseFloat(order.totalAmount || 0);
+
+                if (paymentMethod.toUpperCase() === 'COD' || paymentMethod.includes('Cash')) {
+                    settlementData.pendingCod += amount;
+                    settlementData.ordersCount += 1;
+                } else if (paymentMethod.toUpperCase() === 'UPI') {
+                    settlementData.upiReceived += amount;
+                    settlementData.ordersCount += 1;
+                }
+            }
+        });
+
+        // 5. Format response (deduplicate firebaseUid double-map references)
+        const uniqueSettlements = Array.from(new Set(riderSettlements.values()));
+
+        // Filter out double-mapped entries
+        const finalResults = uniqueSettlements.filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i);
+
+        res.json(finalResults);
+    } catch (error) {
+        console.error("Fetch Settlements Error:", error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
+// POST /api/riders/:id/settle
+router.post('/:id/settle', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // Find rider to get firebaseUid 
+        const rider = await req.db.collection('users').findOne({ _id: new ObjectId(id) });
+        if (!rider) {
+            return res.status(404).json({ message: "Rider not found" });
+        }
+
+        const riderIds = [id];
+        if (rider.firebaseUid) riderIds.push(rider.firebaseUid);
+
+        // Fetch to-be-settled orders
+        const ordersSnapshot = await admin.firestore().collection('orders')
+            .where('status', 'in', ['completed', 'delivered'])
+            .get();
+
+        const batch = admin.firestore().batch();
+        let updatedCount = 0;
+
+        ordersSnapshot.forEach(doc => {
+            const order = doc.data();
+            if (riderIds.includes(order.riderId) && !order.isCashSettled &&
+                (order.paymentMethod === 'COD' || (order.paymentMethod || '').includes('Cash') || order.paymentMethod === 'UPI')) {
+
+                batch.update(doc.ref, {
+                    isCashSettled: true,
+                    settledAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+                updatedCount++;
+            }
+        });
+
+        if (updatedCount > 0) {
+            await batch.commit();
+        }
+
+        res.json({ message: "Settlement marked as collected successfully", ordersSettled: updatedCount });
+    } catch (error) {
+        console.error("Mark Settle Error:", error);
+        res.status(500).json({ message: error.message });
+    }
+});
 
 // GET /api/riders/:id
 router.get('/:id', async (req, res) => {
