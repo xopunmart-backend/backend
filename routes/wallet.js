@@ -16,31 +16,26 @@ const JWT_SECRET = process.env.JWT_SECRET || 'xopunmart_secret_key_123';
 // GET /api/wallet/admin/all-transactions
 router.get('/admin/all-transactions', async (req, res) => {
     try {
-        // In a real app, verify admin role here
-        // const userId = new ObjectId(req.user.id);
-        // ... check role ...
-
-        // Fetch all transactions
+        // Fetch only withdrawal request transactions
         const transactions = await req.db.collection('transactions')
-            .find({})
+            .find({ description: 'Withdrawal Request' })
             .sort({ createdAt: -1 })
             .limit(100)
             .toArray();
 
-        // Calculate stats
+        // Calculate stats specific to withdrawals
         const pendingPayouts = await req.db.collection('transactions').aggregate([
-            { $match: { type: 'debit', status: 'pending' } },
+            { $match: { description: 'Withdrawal Request', status: 'pending' } },
             { $group: { _id: null, total: { $sum: '$amount' } } }
         ]).toArray();
 
         const completedPayouts = await req.db.collection('transactions').aggregate([
-            { $match: { type: 'debit', status: 'processed' } },
+            { $match: { description: 'Withdrawal Request', status: 'processed' } },
             { $group: { _id: null, total: { $sum: '$amount' } } }
         ]).toArray();
 
-        // Commission (mock or calculate from orders?)
-        // Let's assume commission is 10% of total revenue from stats for now, or just send 0 if not tracked in transactions
-        const totalCommission = 0; // Placeholder
+        // Commission Placeholder
+        const totalCommission = 0;
 
         res.json({
             transactions,
