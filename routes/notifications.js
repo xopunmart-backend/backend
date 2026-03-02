@@ -110,4 +110,48 @@ router.post('/subscribe', authenticateToken, async (req, res) => {
     }
 });
 
+// POST /api/notifications/admin/push
+// Send manual push notification to a topic (Admin)
+router.post('/admin/push', authenticateToken, async (req, res) => {
+    try {
+        const { title, message, targetType, topicName } = req.body;
+
+        if (!title || !message || !topicName) {
+            return res.status(400).json({ message: "Missing required fields" });
+        }
+
+        const payload = {
+            notification: {
+                title: title,
+                body: message
+            },
+            data: {
+                type: 'admin_broadcast',
+                click_action: 'FLUTTER_NOTIFICATION_CLICK'
+            },
+            topic: topicName
+        };
+
+        // Send a message to devices subscribed to the provided topic.
+        const response = await admin.messaging().send(payload);
+
+        // Optionally save to generic notifications (or broadcast history) 
+        // if we want to track admin sends.
+        await req.db.collection('notifications').insertOne({
+            title,
+            message,
+            topic: topicName,
+            type: 'broadcast',
+            sentBy: req.user.id,
+            createdAt: new Date(),
+            fcmMessageId: response
+        });
+
+        res.json({ success: true, message: `Notification sent to ${topicName}`, response });
+    } catch (error) {
+        console.error("Error sending admin push:", error);
+        res.status(500).json({ message: "Failed to send notification", error: error.message });
+    }
+});
+
 module.exports = router;
