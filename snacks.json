@@ -1,0 +1,38 @@
+[
+  {
+    "_id": "698b0da0aaa34124e615be62",
+    "name": "Haldiram'S Aloo Bhujia",
+    "category": "Snacks & Namkeen",
+    "subcategory": "Namkeen"
+  },
+  {
+    "_id": "698b0e6aaaa34124e615be63",
+    "name": "Bhujiya",
+    "category": "Snacks & Namkeen",
+    "subcategory": "Namkeen"
+  },
+  {
+    "_id": "698b0fa2aaa34124e615be64",
+    "name": "HALDIRAM",
+    "category": "Snacks & Namkeen",
+    "subcategory": "Namkeen"
+  },
+  {
+    "_id": "698b101eaaa34124e615be65",
+    "name": "Moong dal namkin ",
+    "category": "Snacks & Namkeen",
+    "subcategory": "Namkeen"
+  },
+  {
+    "_id": "69a68d3d92345805d1f6dc95",
+    "name": "bhujia ",
+    "category": "Snacks & Namkeen",
+    "subcategory": "Namkeen"
+  },
+  {
+    "_id": "69a68e1a92345805d1f6dc96",
+    "name": "UI u",
+    "category": "Snacks & Namkeen",
+    "subcategory": null
+  }
+]
