@@ -22,19 +22,19 @@ async function fixVendorIds() {
         const db = client.db('xopunmart');
         const collection = db.collection('products');
 
-        // Find all products where vendorId is a string
-        const products = await collection.find({ vendorId: { $type: "string" } }).toArray();
+        // Find all products
+        const products = await collection.find({}).toArray();
         console.log(`Found ${products.length} products with a string vendorId.`);
 
         let updatedCount = 0;
         for (const prod of products) {
-            if (ObjectId.isValid(prod.vendorId)) {
+            if (typeof prod.vendorId === 'string' && ObjectId.isValid(prod.vendorId)) {
                 await collection.updateOne(
                     { _id: prod._id },
                     { $set: { vendorId: new ObjectId(prod.vendorId) } }
                 );
                 updatedCount++;
-            } else {
+            } else if (typeof prod.vendorId === 'string') {
                 console.warn(`Invalid vendorId string for product ${prod._id}: ${prod.vendorId}`);
             }
         }
