@@ -1,0 +1,52 @@
+{
+  "_id": "69744421de0b5b0403ccccb0",
+  "name": "Vegetables Mart ",
+  "email": "shop@gmail.com",
+  "phone": "9999912345",
+  "role": "vendor",
+  "firebaseUid": "YRaztSrp6Xg6MLwb35hD49v7ct32",
+  "status": "Active",
+  "isOnline": true,
+  "createdAt": "2026-01-24T04:01:37.600Z",
+  "updatedAt": "2026-03-03T07:36:05.433Z",
+  "shopLocation": {
+    "latitude": 28.43516451601762,
+    "longitude": 77.53085086916325,
+    "address": "Updated by Admin",
+    "updatedAt": "2026-01-24T04:28:01.832Z"
+  },
+  "walletBalance": 957.5,
+  "profileImage": "http://res.cloudinary.com/dpamaqzhb/image/upload/v1769928547/xopunmart/vendor_profiles/xks19u94jaga95ekjh6j.jpg",
+  "shopImage": "http://res.cloudinary.com/dpamaqzhb/image/upload/v1769928558/xopunmart/vendor_profiles/rsxqvm3o9gmowg47za8k.avif",
+  "autoAcceptOrders": false,
+  "storeTimings": {
+    "Mon": {
+      "start": "09:00 AM",
+      "end": "10:00 PM"
+    },
+    "Tue": {
+      "start": "08:55 AM",
+      "end": "09:00 PM"
+    },
+    "Wed": {
+      "start": "09:00 AM",
+      "end": "10:00 PM"
+    },
+    "Thu": {
+      "start": "09:00 AM",
+      "end": "10:00 PM"
+    },
+    "Fri": {
+      "start": "09:00 AM",
+      "end": "10:00 PM"
+    },
+    "Sat": {
+      "start": "09:00 AM",
+      "end": "10:00 PM"
+    },
+    "Sun": {
+      "start": "09:00 AM",
+      "end": "10:00 PM"
+    }
+  }
+}
