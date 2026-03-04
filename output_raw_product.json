@@ -1,1 +1,21 @@
-null
+{
+  "_id": "69744a9b6a55d48c2a5d410f",
+  "name": "Onion ",
+  "description": null,
+  "price": 50,
+  "discount": 0,
+  "stock": 10,
+  "unit": "kg",
+  "image": "http://res.cloudinary.com/dpamaqzhb/image/upload/v1769228954/xopunmart/products/amxvarpgtj18qa7c9m1i.jpg",
+  "availability": "in-stock",
+  "category": "Vegetables",
+  "subcategory": null,
+  "vendorId": "69744421de0b5b0403ccccb0",
+  "sku": "SKU-1769228955457",
+  "lowStockThreshold": 10,
+  "approvalStatus": "approved",
+  "createdAt": "2026-01-24T04:29:15.457Z",
+  "updatedAt": "2026-03-04T07:07:41.684Z",
+  "mrp": null,
+  "subCategory": "Daily Vegetables"
+}

@@ -12,7 +12,7 @@ async function test() {
 
     const client = new MongoClient(uri);
     await client.connect();
-    const db = client.db();
+    const db = client.db('xopunmart');
 
     const product = await db.collection('products').findOne({});
     fs.writeFileSync('output_raw_product.json', JSON.stringify(product, null, 2));

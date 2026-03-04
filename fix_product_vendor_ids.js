@@ -19,7 +19,7 @@ async function fixVendorIds() {
 
     try {
         await client.connect();
-        const db = client.db();
+        const db = client.db('xopunmart');
         const collection = db.collection('products');
 
         // Find all products where vendorId is a string
