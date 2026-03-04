@@ -14,7 +14,7 @@ async function test() {
     await client.connect();
     const db = client.db();
 
-    const product = await db.collection('products').findOne({ name: /Onion/i });
+    const product = await db.collection('products').findOne({});
     fs.writeFileSync('output_raw_product.json', JSON.stringify(product, null, 2));
 
     await client.close();
