@@ -5,13 +5,13 @@ async function fixVendorIds() {
     const envFile = fs.readFileSync('.env', 'utf-8');
     let uri = '';
     envFile.split('\n').forEach(line => {
-        if (line.startsWith('MONGODB_URI=')) {
-            uri = line.split('=')[1].trim();
+        if (line.startsWith('MONGO_URI=')) {
+            uri = line.substring('MONGO_URI='.length).trim();
         }
     });
 
     if (!uri) {
-        console.error('MONGODB_URI not found in .env');
+        console.error('MONGO_URI not found in .env');
         process.exit(1);
     }
 
