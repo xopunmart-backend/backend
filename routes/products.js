@@ -176,6 +176,11 @@ router.put('/:id', async (req, res) => {
         delete updates._id; // Prevent updating _id
         updates.updatedAt = new Date();
 
+        // Convert vendorId to ObjectId if it exists in the updates
+        if (updates.vendorId) {
+            updates.vendorId = new ObjectId(updates.vendorId);
+        }
+
         const result = await req.db.collection('products').findOneAndUpdate(
             { _id: new ObjectId(id) },
             { $set: updates },
