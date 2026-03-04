@@ -11,7 +11,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'xopunmart_secret_key_123';
 // POST /api/auth/signup
 router.post('/signup', async (req, res) => {
     try {
-        const { name, email, password, phone, role, shopCategory, shopLocation, shopImage } = req.body;
+        const { name, ownerName, email, password, phone, role, shopCategory, shopLocation, shopImage } = req.body;
 
         if (!name || !email || !password || !phone) {
             return res.status(400).json({ message: "All fields are required" });
@@ -29,6 +29,7 @@ router.post('/signup', async (req, res) => {
 
         const newUser = {
             name,
+            ownerName: ownerName || '', // Add owner name
             email,
             phone,
             password: hashedPassword,
@@ -150,6 +151,7 @@ router.post('/login', async (req, res) => {
                 id: user._id,
                 email: user.email,
                 name: user.name,
+                ownerName: user.ownerName, // Add owner name
                 phone: user.phone, // Added phone
                 role: user.role,
                 shopCategory: user.shopCategory,
@@ -206,6 +208,7 @@ router.post('/firebase-login', async (req, res) => {
             // Create New User
             const newUser = {
                 name: name || 'New User',
+                ownerName: req.body.ownerName || '', // Add owner name
                 email: firebaseEmail,
                 phone: phone || '',
                 role: userRole,
@@ -237,6 +240,7 @@ router.post('/firebase-login', async (req, res) => {
                 id: user._id,
                 email: user.email,
                 name: user.name,
+                ownerName: user.ownerName, // Add owner name
                 role: user.role,
                 status: user.status,
                 phone: user.phone,
@@ -313,6 +317,7 @@ router.get('/profile', async (req, res) => {
         res.json({
             id: user._id,
             name: user.name,
+            ownerName: user.ownerName, // Add owner name
             email: user.email,
             phone: user.phone,
             role: user.role,
@@ -387,10 +392,11 @@ router.put('/profile', async (req, res) => {
             }
         }
 
-        const { name, phone, email, password, shopImage, shopCategories, shopCategory } = req.body;
+        const { name, ownerName, phone, email, password, shopImage, shopCategories, shopCategory } = req.body;
 
         const updates = { updatedAt: new Date() };
         if (name) updates.name = name;
+        if (ownerName !== undefined) updates.ownerName = ownerName; // Add owner name updatability
         if (phone) updates.phone = phone;
         if (shopImage) updates.shopImage = shopImage;
         if (req.body.profileImage) updates.profileImage = req.body.profileImage;
