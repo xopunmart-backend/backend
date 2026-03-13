@@ -19,18 +19,24 @@ const sendToUser = async (db, userId, title, body, data = {}) => {
         let fcmToken = null;
         let firebaseUid = null;
 
-        // 1. Try to find user in MongoDB (Check users then vendors)
+        // 1. Try to find user in MongoDB (Check users then vendors then riders)
         let user;
         if (ObjectId.isValid(userId)) {
             user = await db.collection('users').findOne({ _id: new ObjectId(userId) });
             if (!user) {
                 user = await db.collection('vendors').findOne({ _id: new ObjectId(userId) });
             }
+            if (!user) {
+                user = await db.collection('riders').findOne({ _id: new ObjectId(userId) });
+            }
         } else {
             // Assume it is a Firebase UID
             user = await db.collection('users').findOne({ firebaseUid: userId });
             if (!user) {
                 user = await db.collection('vendors').findOne({ firebaseUid: userId });
+            }
+            if (!user) {
+                user = await db.collection('riders').findOne({ firebaseUid: userId });
             }
         }
 
@@ -58,11 +64,18 @@ const sendToUser = async (db, userId, title, body, data = {}) => {
             }
         }
 
-        // Fallback for Vendors (sometimes needing separate collection)
-        if (!fcmToken) {
+        // Fallback for Vendors and Riders (sometimes needing separate collection)
+        if (!fcmToken && firebaseUid) {
             const vendorDoc = await admin.firestore().collection('vendors').doc(firebaseUid).get();
             if (vendorDoc.exists) {
                 fcmToken = vendorDoc.data().fcmToken;
+            }
+        }
+
+        if (!fcmToken && firebaseUid) {
+            const riderDoc = await admin.firestore().collection('riders').doc(firebaseUid).get();
+            if (riderDoc.exists) {
+                fcmToken = riderDoc.data().fcmToken;
             }
         }
 
