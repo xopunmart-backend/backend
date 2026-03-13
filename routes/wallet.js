@@ -51,6 +51,8 @@ router.get('/admin/all-transactions', async (req, res) => {
     }
 });
 
+const { sendToUser } = require('../utils/notificationSender');
+
 // PUT /api/wallet/admin/transaction/status
 router.put('/admin/transaction/status', async (req, res) => {
     try {
@@ -84,6 +86,15 @@ router.put('/admin/transaction/status', async (req, res) => {
             { _id: txId },
             { $set: { status: status, processedAt: new Date() } }
         );
+
+        // Send notification to the user
+        const title = status === 'processed' ? "Withdrawal Approved" : "Withdrawal Rejected";
+        const body = status === 'processed'
+            ? `Your withdrawal request for ₹${transaction.amount} has been successfully processed.`
+            : `Your withdrawal request for ₹${transaction.amount} was rejected and the amount has been refunded to your wallet.`;
+        
+        // sendToUser automatically logs to the 'notifications' collection
+        await sendToUser(req.db, transaction.userId, title, body, { type: 'wallet', transactionId: txId.toString() });
 
         res.json({ success: true, message: `Transaction ${status} successfully` });
     } catch (error) {
