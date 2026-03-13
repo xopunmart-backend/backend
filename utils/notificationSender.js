@@ -19,31 +19,43 @@ const sendToUser = async (db, userId, title, body, data = {}) => {
         let fcmToken = null;
         let firebaseUid = null;
 
-        // 1. Try to find user in MongoDB
+        // 1. Try to find user in MongoDB (Check users then vendors)
         let user;
         if (ObjectId.isValid(userId)) {
             user = await db.collection('users').findOne({ _id: new ObjectId(userId) });
+            if (!user) {
+                user = await db.collection('vendors').findOne({ _id: new ObjectId(userId) });
+            }
         } else {
             // Assume it is a Firebase UID
             user = await db.collection('users').findOne({ firebaseUid: userId });
+            if (!user) {
+                user = await db.collection('vendors').findOne({ firebaseUid: userId });
+            }
         }
 
         if (user) {
             firebaseUid = user.firebaseUid;
+            // Native FCM token check inside MongoDB (in case custom FCM tokens are saved there instead of Firestore)
+            if (user.fcmToken) {
+                fcmToken = user.fcmToken;
+            }
         } else {
             // If not in Mongo, maybe it's passed as direct Firebase UID?
             if (typeof userId === 'string') firebaseUid = userId;
         }
 
-        if (!firebaseUid) {
-            console.warn(`Notification skipped: No Firebase UID found for ${userId}`);
+        if (!firebaseUid && !fcmToken) {
+            console.warn(`Notification skipped: No Firebase UID or FCM token found for ${userId}`);
             return;
         }
 
-        // 2. Fetch FCM Token from Firestore (Single Source of Truth)
-        const userDoc = await admin.firestore().collection('users').doc(firebaseUid).get();
-        if (userDoc.exists) {
-            fcmToken = userDoc.data().fcmToken;
+        // 2. Fetch FCM Token from Firestore IF not found in MongoDB
+        if (!fcmToken && firebaseUid) {
+            const userDoc = await admin.firestore().collection('users').doc(firebaseUid).get();
+            if (userDoc.exists) {
+                fcmToken = userDoc.data().fcmToken;
+            }
         }
 
         // Fallback for Vendors (sometimes needing separate collection)
