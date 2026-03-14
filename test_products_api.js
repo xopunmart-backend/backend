@@ -7,10 +7,11 @@ https.get('https://xopunmart.onrender.com/api/products?vendorId=69744421de0b5b04
     try {
       const products = JSON.parse(data);
       console.log('Total products:', products.length);
-      console.log(JSON.stringify(products.slice(0, 3), null, 2));
+      if (products.length > 0) {
+        console.log('First product:', products[0].name, products[0].approvalStatus);
+      }
     } catch (e) {
-      console.log('Error parsing:', e);
-      console.log('Raw data:', data);
+      console.log('Raw response (first 300 chars):', data.substring(0, 300));
     }
   });
 }).on('error', (err) => {
