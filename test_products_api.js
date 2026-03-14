@@ -1,6 +1,6 @@
 const https = require('https');
 
-https.get('https://xopunmart.onrender.com/api/products?vendorId=69744421de0b5b0403ccccb0', (res) => {
+https.get('https://xopunmart.onrender.com/api/products?vendorId=69744421de0b5b0403ccccb0&skipTimingFilter=true', (res) => {
   let data = '';
   res.on('data', (chunk) => { data += chunk; });
   res.on('end', () => {
