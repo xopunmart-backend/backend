@@ -5,7 +5,7 @@ const router = express.Router();
 // GET all products (with optional vendorId filter)
 router.get('/', async (req, res) => {
     try {
-        const { vendorId, category, approvalStatus } = req.query;
+        const { vendorId, category, approvalStatus, skipTimingFilter } = req.query;
         const query = {};
         if (vendorId) {
             query.vendorId = new ObjectId(vendorId);
@@ -63,6 +63,7 @@ router.get('/', async (req, res) => {
         const currentMinutes = istTime.getUTCHours() * 60 + istTime.getUTCMinutes();
 
         const products = allProducts.filter(product => {
+            if (skipTimingFilter === 'true') return true;
             if (!product.vendor) return true;
 
             // Respect manual offline toggle from Vendor App

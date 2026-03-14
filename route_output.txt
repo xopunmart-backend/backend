@@ -1,0 +1,15 @@
+[dotenv@17.2.3] injecting env (6) from .env -- tip: ⚙️  override existing env vars with { override: true }
+allProducts length: 6
+Checking product: Spinach todayTiming: { start: '09:00 AM', end: '10:00 PM' }
+currentMinutes: 530, startMins: 540, endMins: 1320
+Checking product: coriander leaves  todayTiming: { start: '09:00 AM', end: '10:00 PM' }
+currentMinutes: 530, startMins: 540, endMins: 1320
+Checking product: Potato  todayTiming: { start: '09:00 AM', end: '10:00 PM' }
+currentMinutes: 530, startMins: 540, endMins: 1320
+Checking product: laptop  todayTiming: { start: '09:00 AM', end: '10:00 PM' }
+currentMinutes: 530, startMins: 540, endMins: 1320
+Checking product: taratusddjjddj todayTiming: { start: '09:00 AM', end: '10:00 PM' }
+currentMinutes: 530, startMins: 540, endMins: 1320
+Checking product: garlic  todayTiming: { start: '09:00 AM', end: '10:00 PM' }
+currentMinutes: 530, startMins: 540, endMins: 1320
+Final products length: 0
