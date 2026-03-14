@@ -163,6 +163,21 @@ router.post('/', async (req, res) => {
         newProduct.updatedAt = new Date();
 
         const result = await req.db.collection('products').insertOne(newProduct);
+
+        // Notify all admins about new product pending approval
+        try {
+            const { sendToTopic } = require('../utils/notificationSender');
+            const vendorName = vendor ? (vendor.name || 'A vendor') : 'A vendor';
+            await sendToTopic(
+                'admin_notifications',
+                'New Product Pending Approval',
+                `${vendorName} submitted "${newProduct.name}" for approval.`,
+                { type: 'product_approval', productId: result.insertedId.toString() }
+            );
+        } catch (notifErr) {
+            console.error('Failed to send admin notification for new product:', notifErr);
+        }
+
         res.status(201).json({ ...newProduct, _id: result.insertedId });
     } catch (error) {
         res.status(400).json({ message: error.message });
