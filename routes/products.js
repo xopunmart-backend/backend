@@ -38,58 +38,15 @@ router.get('/', async (req, res) => {
             }
         });
 
-        // Application Layer Filtering for Open/Closed logic
-        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        const now = new Date();
-        // Adjust for IST (UTC+5:30)
-        // Since server might be UTC, we add offset
-        const istTime = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
-
-        const options = { timeZone: 'Asia/Kolkata', hour12: true, hour: 'numeric', minute: 'numeric' };
-        const formatter = new Intl.DateTimeFormat('en-US', { ...options, weekday: 'short' });
-        const parts = formatter.formatToParts(now);
-        const dayPart = parts.find(p => p.type === 'weekday').value; // "Mon", "Tue"
-
-        const parseTime = (timeStr) => {
-            const [time, modifier] = timeStr.split(' ');
-            let [hours, minutes] = time.split(':');
-            hours = parseInt(hours, 10);
-            minutes = parseInt(minutes, 10);
-            if (hours === 12 && modifier === 'AM') hours = 0;
-            if (hours !== 12 && modifier === 'PM') hours += 12;
-            return hours * 60 + minutes;
-        };
-
-        const currentMinutes = istTime.getUTCHours() * 60 + istTime.getUTCMinutes();
-
+        // Basic filtering since shop timings are now manual
         const products = allProducts.filter(product => {
             if (skipTimingFilter === 'true') return true;
             if (!product.vendor) return true;
 
-            // Respect manual offline toggle from Vendor App
+            // Follow manual online/offline toggle
             if (product.vendor.isOnline === false) return false;
 
-            if (!product.vendor.storeTimings) return true; // Default Open if no data
-
-            const timings = product.vendor.storeTimings;
-            const todayTiming = timings[dayPart];
-
-            if (!todayTiming) return true; // Assume open if no timing set for today? Or closed? 
-            // Usually if no timing, it might mean closed, but let's be lenient or check requirement.
-            // User screenshot shows all days. If one is missing, maybe closed. 
-            // Let's assume Open if undefined to avoid mistakenly hiding everything.
-
-            if (todayTiming === 'Closed') return false;
-
-            try {
-                const startMins = parseTime(todayTiming.start);
-                const endMins = parseTime(todayTiming.end);
-
-                // Simple check for same-day timings
-                return currentMinutes >= startMins && currentMinutes <= endMins;
-            } catch (e) {
-                return true; // Error parsing, default open
-            }
+            return true;
         }).map(p => {
             const { vendor, ...rest } = p;
             return { ...rest, vendorName: vendor.name, vendorId: vendor._id };
