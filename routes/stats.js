@@ -28,6 +28,8 @@ router.get('/dashboard', async (req, res) => {
         let thisMonthRevenue = 0;
         let lastMonthRevenue = 0;
         let cancelledLoss = 0;
+        let totalCommission = 0;
+        let totalCustomerFees = 0;
 
         const now = new Date();
         const currentMonth = now.getMonth();
@@ -116,6 +118,15 @@ router.get('/dashboard', async (req, res) => {
 
             if (status !== 'cancelled') {
                 totalRevenue += amount;
+                
+                if (status === 'completed') {
+                    totalCommission += parseFloat(order.platformCommission || 0);
+                }
+                const dFee = parseFloat(order.deliveryFee || 0);
+                const hFee = parseFloat(order.handlingFee || 0);
+                const mFee = parseFloat(order.multiVendorFee || 0);
+                totalCustomerFees += (dFee + hFee + mFee);
+
                 if (date) {
                     if (isThisMonth(date)) thisMonthRevenue += amount;
                     if (isLastMonth(date)) lastMonthRevenue += amount;
@@ -304,6 +315,8 @@ router.get('/dashboard', async (req, res) => {
             orderCounts, // FILTERED counts
             dailyRevenue,
             cancelledLoss,
+            totalCommission,
+            totalCustomerFees,
             timeframeRevenue: {
                 today: todayRevenue,
                 week: weekRevenue,
@@ -334,6 +347,8 @@ router.get('/dashboard', async (req, res) => {
                     _id: o.id, // Frontend expects _id
                     customerName: o.customerName,
                     totalAmount: o.totalAmount,
+                    platformCommission: o.platformCommission || 0,
+                    customerFees: (parseFloat(o.deliveryFee || 0) + parseFloat(o.handlingFee || 0) + parseFloat(o.multiVendorFee || 0)),
                     status: o.status,
                     createdAt: d.toISOString()
                 };
