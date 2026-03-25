@@ -1,7 +1,29 @@
+require('dotenv').config();
 const { MongoClient } = require('mongodb');
 
-// URI from the backend project
-// process.env.MONGODB_URI or a local fallback if testing locally. 
-// Looking at backend/config.js or backend/index.js we can see if it's local or Atlas.
-// Let's just require the db connection string or write a generic script that connects to the same db.
-// Actually, I can just read it from the .env or backend code.
+async function run() {
+    const uri = process.env.MONGO_URI;
+    if (!uri) {
+        console.error("No MONGO_URI string provided.");
+        process.exit(1);
+    }
+    const client = new MongoClient(uri);
+    try {
+        await client.connect();
+        const db = client.db('xopunmart');
+        const users = db.collection('users');
+
+        const result = await users.updateMany(
+            { storeTimings: { $exists: true } },
+            { $unset: { storeTimings: "" } }
+        );
+
+        console.log(`Successfully removed storeTimings from ${result.modifiedCount} vendors.`);
+    } catch (e) {
+        console.error(e);
+    } finally {
+        await client.close();
+    }
+}
+
+run();
