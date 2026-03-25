@@ -335,7 +335,6 @@ router.get('/profile', async (req, res) => {
             isOnline: user.isOnline,
             savedAddresses: user.savedAddresses || [],
             bankDetails: user.bankDetails || {},
-            storeTimings: user.storeTimings || {},
             firebaseUid: user.firebaseUid
         });
     } catch (error) {
@@ -441,11 +440,6 @@ router.put('/profile', async (req, res) => {
 
         if (req.body.savedAddresses) {
             updates.savedAddresses = req.body.savedAddresses;
-        }
-
-        if (req.body.storeTimings) {
-            console.log(`[Profile Update] Updating store timings for user ${userId}:`, JSON.stringify(req.body.storeTimings));
-            updates.storeTimings = req.body.storeTimings;
         }
 
         if (req.body.autoAcceptOrders !== undefined) {
