@@ -646,6 +646,7 @@ router.patch('/:id/accept', async (req, res) => {
                     riderId: riderId,
                     visibleToRiderId: firebaseUidForVisibility, // Keep visible to rider so active stream works using Firebase UID
                     status: 'accepted',
+                    assignmentStatus: 'assigned', // Remove from all riders' "New Requests" stream
                     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
                     riderAcceptedAt: admin.firestore.FieldValue.serverTimestamp()
                 });
