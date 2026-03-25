@@ -360,11 +360,20 @@ router.patch('/:id/status', async (req, res) => {
 
         const orderRef = admin.firestore().collection('orders').doc(id);
 
-        // 1. Update Status in Firestore
-        await orderRef.update({
+        const updateData = {
             status: status,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        });
+        };
+
+        if (status === 'cancelled') {
+            updateData.assignmentStatus = 'cancelled';
+            updateData.visibleToRiderId = null; // Remove from rider's view immediately
+        } else if (status === 'delivered' || status === 'completed') {
+            updateData.assignmentStatus = 'completed';
+        }
+
+        // 1. Update Status in Firestore
+        await orderRef.update(updateData);
 
         // 2. Post-Update Logic (Wallet, Rider Availability, Notifications)
         const orderDoc = await orderRef.get();
