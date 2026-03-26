@@ -463,7 +463,7 @@ router.put('/profile', async (req, res) => {
     }
 });
 
-// POST /api/auth/fcm-token
+// POST /api/auth/fcm-token - Save FCM token to MongoDB
 router.post('/fcm-token', async (req, res) => {
     try {
         const tokenHeader = req.headers.authorization?.split(' ')[1];
@@ -471,9 +471,34 @@ router.post('/fcm-token', async (req, res) => {
             return res.status(401).json({ message: "No token provided" });
         }
 
-        // Just return success for backward compatibility or if app calls it
-        // The real work is done in Firestore now
-        res.json({ success: true, message: "FCM token deprecated in Mongo" });
+        const { fcmToken } = req.body;
+        if (!fcmToken) {
+            return res.status(400).json({ message: "fcmToken is required" });
+        }
+
+        let userId;
+        // Try JWT first, then Firebase token
+        try {
+            const decoded = jwt.verify(tokenHeader, JWT_SECRET);
+            userId = new ObjectId(decoded.id);
+        } catch {
+            try {
+                const decodedFirebase = await admin.auth().verifyIdToken(tokenHeader);
+                const user = await req.db.collection('users').findOne({ $or: [{ firebaseUid: decodedFirebase.uid }, { email: decodedFirebase.email }] });
+                if (!user) return res.status(404).json({ message: "User not found" });
+                userId = user._id;
+            } catch {
+                return res.status(401).json({ message: "Invalid token" });
+            }
+        }
+
+        await req.db.collection('users').updateOne(
+            { _id: userId },
+            { $set: { fcmToken: fcmToken, fcmTokenUpdatedAt: new Date() } }
+        );
+
+        console.log(`FCM token saved to MongoDB for user ${userId}`);
+        res.json({ success: true, message: "FCM token saved" });
 
     } catch (error) {
         console.error("FCM Token update error:", error);

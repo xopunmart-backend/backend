@@ -33,6 +33,7 @@ router.get('/', authenticateToken, async (req, res) => {
             .limit(50)
             .toArray();
 
+        console.log(`[Notifications] userId=${req.user.id} found=${notifications.length} records`);
         res.json(notifications);
     } catch (error) {
         console.error("Error fetching notifications:", error);
