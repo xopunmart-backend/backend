@@ -18,108 +18,90 @@ const sendToUser = async (db, userId, title, body, data = {}) => {
 
         let fcmToken = null;
         let firebaseUid = null;
+        let user = null;
 
-        // 1. Try to find user in MongoDB (Check users then vendors then riders)
-        let user;
+        // 1. Find user in the 'users' collection (ALL roles: customer, vendor, rider are here)
         if (ObjectId.isValid(userId)) {
             user = await db.collection('users').findOne({ _id: new ObjectId(userId) });
-            if (!user) {
-                user = await db.collection('vendors').findOne({ _id: new ObjectId(userId) });
-            }
-            if (!user) {
-                user = await db.collection('riders').findOne({ _id: new ObjectId(userId) });
-            }
-        } else {
-            // Assume it is a Firebase UID
+        }
+
+        // If not found by ObjectId, try firebaseUid string
+        if (!user && typeof userId === 'string') {
             user = await db.collection('users').findOne({ firebaseUid: userId });
-            if (!user) {
-                user = await db.collection('vendors').findOne({ firebaseUid: userId });
-            }
-            if (!user) {
-                user = await db.collection('riders').findOne({ firebaseUid: userId });
-            }
         }
 
         if (user) {
             firebaseUid = user.firebaseUid;
-            // Native FCM token check inside MongoDB (in case custom FCM tokens are saved there instead of Firestore)
             if (user.fcmToken) {
                 fcmToken = user.fcmToken;
             }
         } else {
-            // If not in Mongo, maybe it's passed as direct Firebase UID?
             if (typeof userId === 'string') firebaseUid = userId;
         }
 
-        if (!firebaseUid && !fcmToken) {
-            console.warn(`Notification skipped: No Firebase UID or FCM token found for ${userId}`);
-            return;
-        }
-
-        // 2. Fetch FCM Token from Firestore IF not found in MongoDB
-        if (!fcmToken && firebaseUid) {
-            const userDoc = await admin.firestore().collection('users').doc(firebaseUid).get();
-            if (userDoc.exists) {
-                fcmToken = userDoc.data().fcmToken;
-            }
-        }
-
-        // Fallback for Vendors and Riders (sometimes needing separate collection)
-        if (!fcmToken && firebaseUid) {
-            const vendorDoc = await admin.firestore().collection('vendors').doc(firebaseUid).get();
-            if (vendorDoc.exists) {
-                fcmToken = vendorDoc.data().fcmToken;
-            }
-        }
-
-        if (!fcmToken && firebaseUid) {
-            const riderDoc = await admin.firestore().collection('riders').doc(firebaseUid).get();
-            if (riderDoc.exists) {
-                fcmToken = riderDoc.data().fcmToken;
-            }
-        }
-
-        // 3. Save to MongoDB Notifications History FIRST (so it shows in-app always)
+        // 2. Save to MongoDB Notifications History ALWAYS (so in-app screen always shows it)
         if (user && user._id) {
-            await db.collection('notifications').insertOne({
-                userId: user._id,
-                title,
-                message: body,
-                type: data.type || 'info',
-                isRead: false,
-                createdAt: new Date()
-            });
+            try {
+                await db.collection('notifications').insertOne({
+                    userId: user._id,
+                    title,
+                    message: body,
+                    type: data.type || 'info',
+                    isRead: false,
+                    createdAt: new Date()
+                });
+            } catch (dbErr) {
+                console.error('Failed to save notification to DB:', dbErr);
+            }
+        } else {
+            console.warn(`Could not save notification to DB: user not found for userId=${userId}`);
+        }
+
+        // 3. Try to get FCM token from Firestore if not in MongoDB
+        if (!fcmToken && firebaseUid) {
+            try {
+                const userDoc = await admin.firestore().collection('users').doc(firebaseUid).get();
+                if (userDoc.exists) fcmToken = userDoc.data().fcmToken;
+            } catch (_) {}
+        }
+        if (!fcmToken && firebaseUid) {
+            try {
+                const vendorDoc = await admin.firestore().collection('vendors').doc(firebaseUid).get();
+                if (vendorDoc.exists) fcmToken = vendorDoc.data().fcmToken;
+            } catch (_) {}
+        }
+        if (!fcmToken && firebaseUid) {
+            try {
+                const riderDoc = await admin.firestore().collection('riders').doc(firebaseUid).get();
+                if (riderDoc.exists) fcmToken = riderDoc.data().fcmToken;
+            } catch (_) {}
         }
 
         if (!fcmToken) {
-            console.warn(`Push Notification skipped: No FCM token found for user ${userId} (UID: ${firebaseUid}). Saved to in-app history.`);
+            console.warn(`Push skipped: No FCM token for user ${userId}. Saved to in-app history.`);
             return;
         }
 
-        // 3. Send Notification
+        // 4. Send FCM Push Notification
         await admin.messaging().send({
             token: fcmToken,
-            notification: {
-                title: title,
-                body: body,
-            },
+            notification: { title, body },
             data: {
-                ...data,
-                click_action: 'FLUTTER_NOTIFICATION_CLICK' // Standard for Flutter
+                ...Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])),
+                click_action: 'FLUTTER_NOTIFICATION_CLICK'
             }
         });
 
-        console.log(`Push Notification sent to ${userId}: ${title}`);
+        console.log(`Push sent to ${userId}: ${title}`);
 
     } catch (error) {
         console.error(`Error sending notification to user ${userId}:`, error);
-        // Clean up invalid tokens if necessary (optional/advanced)
         if (error.code === 'messaging/registration-token-not-registered') {
             console.warn(`Token invalid for user ${userId}, consider removing from DB.`);
-            // await db.collection('users').updateOne({ _id: user._id }, { $unset: { fcmToken: "" } });
         }
     }
 };
+
 
 /**
  * Send notification to a topic (e.g., 'admin_notifications')
