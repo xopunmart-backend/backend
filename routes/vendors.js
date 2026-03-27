@@ -15,7 +15,38 @@ router.get('/', async (req, res) => {
             .find(query)
             .project({ password: 0 }) // Exclude password
             .toArray();
-        res.json(vendors);
+
+        // Fetch ALL orders from Firestore to calculate stats for each vendor
+        const ordersSnapshot = await admin.firestore().collection('orders').get();
+        console.log(`[VendorsList] Fetched ${ordersSnapshot.size} orders from Firestore`);
+        const vendorStats = {};
+
+        ordersSnapshot.forEach(doc => {
+            const data = doc.data();
+            const vId = data.vendorId;
+            if (vId) {
+                if (!vendorStats[vId]) {
+                    vendorStats[vId] = { totalSales: 0, totalOrders: 0 };
+                }
+                vendorStats[vId].totalOrders++;
+                if (data.status !== 'cancelled') {
+                    vendorStats[vId].totalSales += (data.totalAmount || 0);
+                }
+            }
+        });
+        console.log(`[VendorsList] Calculated stats for ${Object.keys(vendorStats).length} vendors`);
+
+        // Merge stats into vendors
+        const vendorsWithStats = vendors.map(v => {
+            const stats = vendorStats[v._id.toString()] || { totalSales: 0, totalOrders: 0 };
+            return {
+                ...v,
+                totalSales: stats.totalSales,
+                totalOrders: stats.totalOrders
+            };
+        });
+
+        res.json(vendorsWithStats);
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
