@@ -8,8 +8,8 @@ async function testStats() {
 
     try {
         await client.connect();
-        const db = client.db();
-        console.log("Connected to MongoDB");
+        const db = client.db('xopunmart');
+        console.log("Connected to MongoDB (xopunmart)");
 
         const query = { role: 'vendor' };
         const vendors = await db.collection('users')
@@ -18,8 +18,11 @@ async function testStats() {
             .toArray();
         
         console.log(`Found ${vendors.length} vendors`);
+        if (vendors.length > 0) {
+            console.log(`Sample Vendor ID: ${vendors[0]._id.toString()} (Type: ${typeof vendors[0]._id.toString()})`);
+        }
 
-        const ordersSnapshot = await admin.firestore().collection('orders').get();
+        const ordersSnapshot = await admin.firestore().collection('orders').limit(100).get();
         console.log(`Fetched ${ordersSnapshot.size} orders from Firestore`);
         
         const vendorStats = {};
@@ -27,6 +30,11 @@ async function testStats() {
             const data = doc.data();
             const vId = data.vendorId;
             if (vId) {
+                // Log the first order's vendorId type
+                if (Object.keys(vendorStats).length === 0) {
+                    console.log(`Sample Firestore vendorId: ${vId} (Type: ${typeof vId})`);
+                }
+
                 if (!vendorStats[vId]) {
                     vendorStats[vId] = { totalSales: 0, totalOrders: 0 };
                 }
@@ -37,19 +45,22 @@ async function testStats() {
             }
         });
 
-        console.log("Vendor Stats Map:", JSON.stringify(vendorStats, null, 2));
+        console.log("Vendor Stats Keys:", Object.keys(vendorStats));
 
         const vendorsWithStats = vendors.map(v => {
-            const stats = vendorStats[v._id.toString()] || { totalSales: 0, totalOrders: 0 };
+            const vidStr = v._id.toString();
+            const stats = vendorStats[vidStr] || { totalSales: 0, totalOrders: 0 };
             return {
                 name: v.name,
-                id: v._id.toString(),
+                id: vidStr,
                 totalSales: stats.totalSales,
                 totalOrders: stats.totalOrders
             };
         });
 
-        console.log("Vendors with Stats (Sample):", JSON.stringify(vendorsWithStats.slice(0, 5), null, 2));
+        const activeVendors = vendorsWithStats.filter(v => v.totalOrders > 0);
+        console.log(`Found ${activeVendors.length} vendors with non-zero orders.`);
+        console.log("Active Vendors:", JSON.stringify(activeVendors, null, 2));
 
     } catch (error) {
         console.error("Error:", error);
