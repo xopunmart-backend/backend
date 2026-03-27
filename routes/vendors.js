@@ -193,4 +193,30 @@ router.patch('/:id/shop-location', async (req, res) => {
     }
 });
 
+// DELETE /api/vendors/:id
+router.delete('/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).json({ message: "Invalid Vendor ID" });
+        }
+
+        const vId = new ObjectId(id);
+
+        // 1. Delete associated products
+        await req.db.collection('products').deleteMany({ vendorId: vId });
+
+        // 2. Delete Vendor from users collection
+        const result = await req.db.collection('users').deleteOne({ _id: vId, role: 'vendor' });
+
+        if (result.deletedCount === 0) {
+            return res.status(404).json({ message: "Vendor not found" });
+        }
+
+        res.json({ message: "Vendor and associated products deleted successfully" });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+});
+
 module.exports = router;
