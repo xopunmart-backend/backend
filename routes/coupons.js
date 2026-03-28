@@ -144,6 +144,36 @@ router.post('/apply', authenticateToken, async (req, res) => {
     }
 });
 
+// PUT /api/coupons/:id
+router.put('/:id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { code, description, discountType, discountValue, minOrderAmount, expiryDate } = req.body;
+
+        const updateData = {};
+        if (code) updateData.code = code.toUpperCase();
+        if (description) updateData.description = description;
+        if (discountType) updateData.discountType = discountType;
+        if (discountValue !== undefined) updateData.discountValue = parseFloat(discountValue) || 0;
+        if (minOrderAmount !== undefined) updateData.minOrderAmount = parseFloat(minOrderAmount) || 0;
+        if (expiryDate !== undefined) updateData.expiryDate = expiryDate ? new Date(expiryDate) : null;
+
+        const result = await req.db.collection('coupons').updateOne(
+            { _id: new ObjectId(id) },
+            { $set: updateData }
+        );
+
+        if (result.matchedCount === 0) {
+            return res.status(404).json({ message: "Coupon not found" });
+        }
+
+        res.json({ message: "Updated successfully" });
+    } catch (error) {
+        console.error("Error updating coupon:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+});
+
 // DELETE /api/coupons/:id
 router.delete('/:id', authenticateToken, async (req, res) => {
     try {
