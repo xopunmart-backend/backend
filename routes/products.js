@@ -46,7 +46,11 @@ router.get('/', async (req, res) => {
             // Follow manual online/offline toggle
             if (product.vendor.isOnline === false) return false;
 
+            // Only show products from approved and active vendors
+            if (product.vendor.status !== 'Active') return false;
+
             return true;
+
         }).map(p => {
             const { vendor, ...rest } = p;
             return { ...rest, vendorName: vendor.name, vendorId: vendor._id };
