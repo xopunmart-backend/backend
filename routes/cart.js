@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { ObjectId } = require('mongodb');
+const admin = require('../firebase');
 
 // Helper to get cart collection
 const getCartCollection = (req) => req.db.collection('carts');
@@ -45,7 +46,23 @@ router.get('/:userId', async (req, res) => {
             }
         }
 
-        res.json({ items: enrichedItems, total: parseFloat(total.toFixed(2)) });
+        // Fetch User Order Count from Firestore
+        let userOrderCount = 0;
+        try {
+            const ordersSnapshot = await admin.firestore().collection('orders')
+                .where('userId', '==', userId)
+                .get();
+            // Filter out cancelled orders
+            userOrderCount = ordersSnapshot.docs.filter(doc => doc.data().status !== 'cancelled').length;
+        } catch (e) {
+            console.error("Error fetching user order count:", e);
+        }
+
+        res.json({ 
+            items: enrichedItems, 
+            total: parseFloat(total.toFixed(2)),
+            userOrderCount 
+        });
     } catch (error) {
         console.error("Get Cart Error:", error);
         res.status(500).json({ message: "Server error" });

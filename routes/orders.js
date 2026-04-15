@@ -45,7 +45,20 @@ router.post('/', async (req, res) => {
         const baseDeliveryFee = settings.deliveryCharge || 20;
 
         const freeDeliveryThreshold = settings.freeDeliveryThreshold || 500;
+        const freeDeliveryFirstXOrders = settings.freeDeliveryFirstXOrders || 0;
         const riderEarning = settings.riderEarning || 15;
+
+        // Fetch User's Past Order Count First!
+        let userOrderCount = 0;
+        try {
+            const historySnap = await admin.firestore().collection('orders')
+                .where('userId', '==', userId)
+                .get();
+            // Optional: Filter out cancelled
+            userOrderCount = historySnap.docs.filter(doc => doc.data().status !== 'cancelled').length;
+        } catch(e) {
+            console.error("Failed to fetch order history:", e);
+        }
 
         // 2. Enrich items & Group by Vendor
         const vendorOrders = {}; // Map<vendorId, orderData>
@@ -171,7 +184,10 @@ router.post('/', async (req, res) => {
                 // Determine delivery fee based on GLOBAL cart total, not individual order total
                 // Note: handling logic asks for single delivery fee. 
                 // We use globalCartTotal calculated in step 2.
-                currentDeliveryFee = globalCartTotal >= freeDeliveryThreshold ? 0 : baseDeliveryFee;
+                let isFreeThreshold = globalCartTotal >= freeDeliveryThreshold;
+                let isFreeByHistory = userOrderCount < freeDeliveryFirstXOrders;
+
+                currentDeliveryFee = (isFreeThreshold || isFreeByHistory) ? 0 : baseDeliveryFee;
                 currentHandlingFee = handlingFee;
 
                 if (totalMultiVendorCharge > 0) {
