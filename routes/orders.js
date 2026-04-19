@@ -746,4 +746,39 @@ router.get('/batch/:groupId', async (req, res) => {
     }
 });
 
+// PATCH /api/orders/:id/cancel - Customer cancel order
+router.patch('/:id/cancel', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const orderRef = admin.firestore().collection('orders').doc(id);
+        const doc = await orderRef.get();
+
+        if (!doc.exists) {
+            return res.status(404).json({ message: "Order not found" });
+        }
+
+        const order = doc.data();
+
+        // 1. Check if rider has already accepted
+        if (order.riderId) {
+            return res.status(400).json({ 
+                message: "Order cannot be cancelled after a rider has accepted it." 
+            });
+        }
+
+        // 2. Perform Cancellation
+        await orderRef.update({
+            status: 'cancelled',
+            assignmentStatus: 'cancelled',
+            visibleToRiderId: null,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        res.json({ success: true, message: "Order cancelled successfully" });
+    } catch (error) {
+        console.error("Cancel order error:", error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
 module.exports = router;
