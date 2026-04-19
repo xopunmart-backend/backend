@@ -39,14 +39,18 @@ router.post('/', async (req, res) => {
         }
 
         // Fetch Settings from Firestore
+        console.log(`[Order Flow] Fetching pricing from settings/pricing...`);
         const settingsSnap = await admin.firestore().collection('settings').doc('pricing').get();
         const settings = settingsSnap.exists ? settingsSnap.data() : {};
         
-        const handlingFee = settings.handlingFee ?? 0;
-        const baseDeliveryFee = settings.deliveryCharge ?? 0;
-        const freeDeliveryThreshold = settings.freeDeliveryThreshold ?? 0;
-        const firstXOrdersFree = settings.freeDeliveryFirstXOrders ?? 0; // consistent name
-        const riderEarning = settings.riderEarning ?? 0;
+        console.log(`[Order Flow] Settings Loaded:`, JSON.stringify(settings));
+
+        const handlingFee = parseFloat(settings.handlingFee ?? 0);
+        const baseDeliveryFee = parseFloat(settings.deliveryCharge ?? 0);
+        const freeDeliveryThreshold = parseFloat(settings.freeDeliveryThreshold ?? 0);
+        const firstXOrdersFree = parseInt(settings.freeDeliveryFirstXOrders ?? 0);
+        const riderEarning = parseFloat(settings.riderEarning ?? 0);
+        const multiVendorFee = parseFloat(settings.multiVendorFee ?? 0);
 
         // Fetch User's Total Order Count from Profile (Using firebaseUid from MongoDB customer doc)
         let userOrderCount = 0;
@@ -145,8 +149,7 @@ router.post('/', async (req, res) => {
 
         // Multi-Vendor Fee Logic
         // We charge a fee for each additional vendor beyond the first one.
-        // settings is already fetched above at line 32
-        const multiVendorFee = settings.multiVendorFee ?? 10;
+        // multiVendorFee is already fetched above at line 32
         const vendorCount = Object.keys(vendorOrders).length;
         const totalMultiVendorCharge = vendorCount > 1 ? (vendorCount - 1) * multiVendorFee : 0;
         let isFirstOrderProcessed = false;
@@ -195,15 +198,15 @@ router.post('/', async (req, res) => {
                 if (firstXOrdersFree > 0 && userOrderCount < firstXOrdersFree) {
                     currentDeliveryFee = 0;
                     currentHandlingFee = 0;
-                    console.log(`[Pricing] Free Order applied! userOrderCount (${userOrderCount}) < firstXOrdersFree (${firstXOrdersFree})`);
-                } else if (globalCartTotal >= freeDeliveryThreshold) {
+                    console.log(`[Pricing] APPLIED: First X Orders Free (User Orders: ${userOrderCount}, Max Free: ${firstXOrdersFree})`);
+                } else if (globalCartTotal >= freeDeliveryThreshold && freeDeliveryThreshold > 0) {
                     currentDeliveryFee = 0;
                     currentHandlingFee = handlingFee;
-                    console.log(`[Pricing] Free Delivery applied! globalCartTotal (${globalCartTotal}) >= threshold (${freeDeliveryThreshold})`);
+                    console.log(`[Pricing] APPLIED: Free Delivery Threshold (Cart: ${globalCartTotal}, Threshold: ${freeDeliveryThreshold})`);
                 } else {
                     currentDeliveryFee = baseDeliveryFee;
                     currentHandlingFee = handlingFee;
-                    console.log(`[Pricing] Standard fees applied. Delivery: ${currentDeliveryFee}, Handling: ${currentHandlingFee}`);
+                    console.log(`[Pricing] APPLIED: Standard Fees (Delivery: ${currentDeliveryFee}, Handling: ${currentHandlingFee})`);
                 }
 
                 if (totalMultiVendorCharge > 0) {
