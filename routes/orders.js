@@ -41,12 +41,12 @@ router.post('/', async (req, res) => {
         // Fetch Settings
         const settingsDoc = await req.db.collection('settings').findOne({ type: 'global_config' });
         const settings = settingsDoc ? settingsDoc.config : {};
-        const handlingFee = settings.handlingFee || 5;
-        const baseDeliveryFee = settings.deliveryCharge || 20;
+        const handlingFee = settings.handlingFee ?? 5;
+        const baseDeliveryFee = settings.deliveryCharge ?? 20;
 
-        const freeDeliveryThreshold = settings.freeDeliveryThreshold || 500;
-        const freeDeliveryFirstXOrders = settings.freeDeliveryFirstXOrders || 0;
-        const riderEarning = settings.riderEarning || 15;
+        const freeDeliveryThreshold = settings.freeDeliveryThreshold ?? 500;
+        const freeDeliveryFirstXOrders = settings.freeDeliveryFirstXOrders ?? 0;
+        const riderEarning = settings.riderEarning ?? 15;
 
         // Fetch User's Past Order Count First!
         let userOrderCount = 0;
@@ -143,7 +143,7 @@ router.post('/', async (req, res) => {
         // Multi-Vendor Fee Logic
         // We charge a fee for each additional vendor beyond the first one.
         // settings is already fetched above at line 32
-        const multiVendorFee = settings.multiVendorFee || 10;
+        const multiVendorFee = settings.multiVendorFee ?? 10;
         const vendorCount = Object.keys(vendorOrders).length;
         const totalMultiVendorCharge = vendorCount > 1 ? (vendorCount - 1) * multiVendorFee : 0;
         let isFirstOrderProcessed = false;
@@ -178,7 +178,7 @@ router.post('/', async (req, res) => {
             let currentDeliveryFee = 0;
             let currentHandlingFee = 0;
             let currentOrderMultiVendorFee = 0;
-            let currentRiderEarning = settings.extraShopRiderFee || 10; // Default to extra fee
+            let currentRiderEarning = settings.extraShopRiderFee ?? 10; // Default to extra fee
 
             if (!isFirstOrderProcessed) {
                 // Determine delivery fee based on GLOBAL cart total, not individual order total
