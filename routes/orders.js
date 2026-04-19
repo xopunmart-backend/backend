@@ -38,26 +38,29 @@ router.post('/', async (req, res) => {
             return res.status(404).json({ message: "Customer not found" });
         }
 
-        // Fetch Settings
-        const settingsDoc = await req.db.collection('settings').findOne({ type: 'global_config' });
-        const settings = settingsDoc ? settingsDoc.config : {};
-        const handlingFee = settings.handlingFee ?? 5;
-        const baseDeliveryFee = settings.deliveryCharge ?? 20;
+        // Fetch Settings from Firestore
+        const settingsSnap = await admin.firestore().collection('settings').doc('pricing').get();
+        const settings = settingsSnap.exists ? settingsSnap.data() : {};
+        
+        const handlingFee = settings.handlingFee ?? 0;
+        const baseDeliveryFee = settings.deliveryCharge ?? 0;
+        const freeDeliveryThreshold = settings.freeDeliveryThreshold ?? 0;
+        const firstXOrdersFree = settings.freeDeliveryFirstXOrders ?? 0; // consistent name
+        const riderEarning = settings.riderEarning ?? 0;
 
-        const freeDeliveryThreshold = settings.freeDeliveryThreshold ?? 500;
-        const freeDeliveryFirstXOrders = settings.freeDeliveryFirstXOrders ?? 0;
-        const riderEarning = settings.riderEarning ?? 15;
-
-        // Fetch User's Past Order Count First!
+        // Fetch User's Total Order Count from Profile (Using firebaseUid from MongoDB customer doc)
         let userOrderCount = 0;
-        try {
-            const historySnap = await admin.firestore().collection('orders')
-                .where('userId', '==', userId)
-                .get();
-            // Optional: Filter out cancelled
-            userOrderCount = historySnap.docs.filter(doc => doc.data().status !== 'cancelled').length;
-        } catch(e) {
-            console.error("Failed to fetch order history:", e);
+        const firestoreUserId = customer.firebaseUid; // The ID used in Firestore
+        
+        if (firestoreUserId) {
+            try {
+                const userSnap = await admin.firestore().collection('users').doc(firestoreUserId).get();
+                if (userSnap.exists) {
+                    userOrderCount = userSnap.data().totalOrders ?? 0;
+                }
+            } catch(e) {
+                console.error("Failed to fetch user totalOrders from Firestore:", e);
+            }
         }
 
         // 2. Enrich items & Group by Vendor
@@ -184,11 +187,24 @@ router.post('/', async (req, res) => {
                 // Determine delivery fee based on GLOBAL cart total, not individual order total
                 // Note: handling logic asks for single delivery fee. 
                 // We use globalCartTotal calculated in step 2.
-                let isFreeThreshold = globalCartTotal >= freeDeliveryThreshold;
-                let isFreeByHistory = userOrderCount < freeDeliveryFirstXOrders;
+                // Pricing Logic Implementation:
+                // IF (userOrderCount < firstXOrdersFree) => deliveryFee = 0, handlingFee = 0
+                // ELSE IF (globalCartTotal >= freeDeliveryThreshold) => deliveryFee = 0
+                // ELSE => deliveryFee = baseDeliveryCharge
 
-                currentDeliveryFee = (isFreeThreshold || isFreeByHistory) ? 0 : baseDeliveryFee;
-                currentHandlingFee = handlingFee;
+                if (firstXOrdersFree > 0 && userOrderCount < firstXOrdersFree) {
+                    currentDeliveryFee = 0;
+                    currentHandlingFee = 0;
+                    console.log(`[Pricing] Free Order applied! userOrderCount (${userOrderCount}) < firstXOrdersFree (${firstXOrdersFree})`);
+                } else if (globalCartTotal >= freeDeliveryThreshold) {
+                    currentDeliveryFee = 0;
+                    currentHandlingFee = handlingFee;
+                    console.log(`[Pricing] Free Delivery applied! globalCartTotal (${globalCartTotal}) >= threshold (${freeDeliveryThreshold})`);
+                } else {
+                    currentDeliveryFee = baseDeliveryFee;
+                    currentHandlingFee = handlingFee;
+                    console.log(`[Pricing] Standard fees applied. Delivery: ${currentDeliveryFee}, Handling: ${currentHandlingFee}`);
+                }
 
                 if (totalMultiVendorCharge > 0) {
                     currentOrderMultiVendorFee = totalMultiVendorCharge;
@@ -223,6 +239,18 @@ router.post('/', async (req, res) => {
             createdOrderIds.push(orderId);
 
             console.log(`[Firestore] Created Order ${orderId} | Sub: ${orderData.subtotal} | Disc: ${orderData.discount} | Final: ${orderData.totalAmount} | Group: ${groupId}`);
+
+            // 4b. Increment User's totalOrders count in Firestore
+            if (firestoreUserId) {
+                try {
+                    await admin.firestore().collection('users').doc(firestoreUserId).update({
+                        totalOrders: admin.firestore.FieldValue.increment(1)
+                    });
+                    console.log(`[User] Incremented totalOrders for Firestore UID: ${firestoreUserId}`);
+                } catch (e) {
+                    console.error("Failed to increment user totalOrders in Firestore:", e);
+                }
+            }
 
             if (orderData.vendorLocation) {
                 batchOrdersForAssignment.push({
