@@ -12,7 +12,7 @@ const { sendToUser, sendToTopic } = require('../utils/notificationSender');
 // POST /api/orders - Create new order(s) from cart
 router.post('/', async (req, res) => {
     try {
-        const { userId, address, paymentMethod, location, couponCode, discountAmount, directItems } = req.body;
+        const { userId, address, paymentMethod, location, couponCode, discountAmount, directItems, contactName, contactPhone } = req.body;
 
         if (!userId || !address) {
             return res.status(400).json({ message: "User ID and address are required" });
@@ -101,8 +101,8 @@ router.post('/', async (req, res) => {
                     paymentMethod: paymentMethod || 'COD',
                     // Customer & Address Info (Denormalized)
                     address: address || {}, // Shipping Address Object
-                    customerName: (customer && customer.name) ? customer.name : 'Unknown',
-                    customerPhone: (customer && customer.phoneNumber) ? customer.phoneNumber : '',
+                    customerName: contactName || ((customer && customer.name) ? customer.name : 'Unknown'),
+                    customerPhone: contactPhone || ((customer && customer.phone || customer.phoneNumber)) ? (customer.phone || customer.phoneNumber) : '',
                     customerImage: (customer && customer.profileImage) ? customer.profileImage : null,
                     customerLocation: location || null, // Lat/Lng
 
