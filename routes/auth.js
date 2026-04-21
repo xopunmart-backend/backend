@@ -164,8 +164,8 @@ router.post('/login', async (req, res) => {
             }
         });
 
-        // Send Login Alert
-        sendToUser(req.db, user._id, "Login Alert", "New login detected on your account.", { type: 'security' });
+        // Send Login Alert (Disabled)
+        // sendToUser(req.db, user._id, "Login Alert", "New login detected on your account.", { type: 'security' });
 
     } catch (error) {
         console.error("Login error:", error);
@@ -254,8 +254,8 @@ router.post('/firebase-login', async (req, res) => {
             }
         });
 
-        // Send Login Alert
-        sendToUser(req.db, user._id, "Login Alert", "New login detected from Firebase on your account.", { type: 'security' });
+        // Send Login Alert (Disabled)
+        // sendToUser(req.db, user._id, "Login Alert", "New login detected from Firebase on your account.", { type: 'security' });
 
     } catch (error) {
         console.error("Firebase Login Error:", error);
