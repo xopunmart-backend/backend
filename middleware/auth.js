@@ -42,9 +42,13 @@ const authenticateToken = async (req, res, next) => {
             return res.sendStatus(500);
         }
 
+        const orConditions = [{ firebaseUid: uid }];
+        if (decodedToken.email) orConditions.push({ email: decodedToken.email });
+        if (decodedToken.phone_number) orConditions.push({ phone: decodedToken.phone_number });
+
         // Find user by firebaseUid or email
         const user = await req.db.collection('users').findOne({
-            $or: [{ firebaseUid: uid }, { email: decodedToken.email }]
+            $or: orConditions
         });
 
         if (user) {
