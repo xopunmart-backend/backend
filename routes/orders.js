@@ -201,11 +201,11 @@ router.post('/', async (req, res) => {
                     console.log(`[Pricing] APPLIED: First X Orders Free (User Orders: ${userOrderCount}, Max Free: ${firstXOrdersFree})`);
                 } else if (globalCartTotal >= freeDeliveryThreshold && freeDeliveryThreshold > 0) {
                     currentDeliveryFee = 0;
-                    currentHandlingFee = handlingFee;
+                    currentHandlingFee = 0; // Handling Fee Disabled
                     console.log(`[Pricing] APPLIED: Free Delivery Threshold (Cart: ${globalCartTotal}, Threshold: ${freeDeliveryThreshold})`);
                 } else {
                     currentDeliveryFee = baseDeliveryFee;
-                    currentHandlingFee = handlingFee;
+                    currentHandlingFee = 0; // Handling Fee Disabled
                     console.log(`[Pricing] APPLIED: Standard Fees (Delivery: ${currentDeliveryFee}, Handling: ${currentHandlingFee})`);
                 }
 
