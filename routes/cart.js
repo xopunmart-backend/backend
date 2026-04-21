@@ -46,14 +46,22 @@ router.get('/:userId', async (req, res) => {
             }
         }
 
-        // Fetch User Order Count from Firestore
+        // Fetch User Order Count from Firestore (Synchronized with orders.js)
         let userOrderCount = 0;
         try {
-            const ordersSnapshot = await admin.firestore().collection('orders')
-                .where('userId', '==', userId)
-                .get();
-            // Filter out cancelled orders
-            userOrderCount = ordersSnapshot.docs.filter(doc => doc.data().status !== 'cancelled').length;
+            const customer = await req.db.collection('users').findOne({ _id: new ObjectId(userId) });
+            const firestoreUserId = customer?.firebaseUid || userId; // Fallback to userId if firebaseUid not synced yet
+
+            const userSnap = await admin.firestore().collection('users').doc(firestoreUserId).get();
+            if (userSnap.exists) {
+                userOrderCount = userSnap.data().totalOrders ?? 0;
+            } else {
+                // Compatibility Fallback: Count existing orders if profile doesn't exist
+                const ordersSnapshot = await admin.firestore().collection('orders')
+                    .where('userId', '==', userId)
+                    .get();
+                userOrderCount = ordersSnapshot.docs.filter(doc => doc.data().status !== 'cancelled').length;
+            }
         } catch (e) {
             console.error("Error fetching user order count:", e);
         }

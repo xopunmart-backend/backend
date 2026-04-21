@@ -246,9 +246,9 @@ router.post('/', async (req, res) => {
             // 4b. Increment User's totalOrders count in Firestore
             if (firestoreUserId) {
                 try {
-                    await admin.firestore().collection('users').doc(firestoreUserId).update({
+                    await admin.firestore().collection('users').doc(firestoreUserId).set({
                         totalOrders: admin.firestore.FieldValue.increment(1)
-                    });
+                    }, { merge: true });
                     console.log(`[User] Incremented totalOrders for Firestore UID: ${firestoreUserId}`);
                 } catch (e) {
                     console.error("Failed to increment user totalOrders in Firestore:", e);

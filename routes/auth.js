@@ -78,6 +78,22 @@ router.post('/signup', async (req, res) => {
             console.error("Error generating firebase token:", ftError);
         }
 
+        // Initialize Firestore Profile
+        if (userRole === 'customer') {
+            try {
+                await admin.firestore().collection('users').doc(result.insertedId.toString()).set({
+                    totalOrders: 0,
+                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                    email: email,
+                    name: name,
+                    role: userRole
+                }, { merge: true });
+                console.log(`[Signup] Initialized Firestore profile for ${result.insertedId}`);
+            } catch (fsErr) {
+                console.error("Failed to initialize Firestore profile on signup:", fsErr);
+            }
+        }
+
 
 
         res.status(201).json({
@@ -236,6 +252,23 @@ router.post('/firebase-login', async (req, res) => {
 
             const result = await req.db.collection('users').insertOne(newUser);
             user = { ...newUser, _id: result.insertedId };
+
+            // Initialize Firestore Profile
+            if (userRole === 'customer') {
+                try {
+                    await admin.firestore().collection('users').doc(uid).set({
+                        totalOrders: 0,
+                        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                        email: firebaseEmail,
+                        name: newUser.name,
+                        role: userRole,
+                        phone: validPhone
+                    }, { merge: true });
+                    console.log(`[Firebase Login] Initialized Firestore profile for ${uid}`);
+                } catch (fsErr) {
+                    console.error("Failed to initialize Firestore profile on Firebase login:", fsErr);
+                }
+            }
         }
 
         // 3. Return User Data (The App will strictly use Firebase User for its session, but needs Mongo ID for business logic)
