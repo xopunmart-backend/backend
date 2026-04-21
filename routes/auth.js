@@ -184,13 +184,18 @@ router.post('/firebase-login', async (req, res) => {
 
         // 1. Verify Firebase Token
         const decodedToken = await admin.auth().verifyIdToken(idToken);
-        const { uid, email: firebaseEmail } = decodedToken;
+        const { uid, email: firebaseEmail, phone_number: firebasePhone } = decodedToken;
 
         console.log(`Firebase Auth: Verified user ${uid} (${firebaseEmail})`);
 
+        const orConditions = [{ firebaseUid: uid }];
+        if (firebaseEmail) orConditions.push({ email: firebaseEmail });
+        const validPhone = firebasePhone || phone;
+        if (validPhone) orConditions.push({ phone: validPhone });
+
         // 2. Find or Create User in MongoDB
         let user = await req.db.collection('users').findOne({
-            $or: [{ firebaseUid: uid }, { email: firebaseEmail }]
+            $or: orConditions
         });
 
         const userRole = role || (user ? user.role : 'vendor'); // Default to vendor for new users if not specified
@@ -210,7 +215,7 @@ router.post('/firebase-login', async (req, res) => {
                 name: name || 'New User',
                 ownerName: req.body.ownerName || '', // Add owner name
                 email: firebaseEmail,
-                phone: phone || '',
+                phone: validPhone || '',
                 role: userRole,
                 firebaseUid: uid,
                 status: 'Pending', // Pending approval
@@ -297,8 +302,11 @@ router.get('/profile', async (req, res) => {
         // Strategy 1: Try Firebase ID Token
         try {
             const decodedFirebase = await admin.auth().verifyIdToken(token);
+            const orConditions = [{ firebaseUid: decodedFirebase.uid }];
+            if (decodedFirebase.email) orConditions.push({ email: decodedFirebase.email });
+            if (decodedFirebase.phone_number) orConditions.push({ phone: decodedFirebase.phone_number });
             // specific query for firebase user
-            user = await req.db.collection('users').findOne({ $or: [{ firebaseUid: decodedFirebase.uid }, { email: decodedFirebase.email }] });
+            user = await req.db.collection('users').findOne({ $or: orConditions });
             // If user found via email but no firebaseUid, sync it? (Optional, skipping for read-only)
         } catch (firebaseError) {
             // Strategy 2: Try JWT (Legacy)
@@ -376,7 +384,10 @@ router.put('/profile', async (req, res) => {
         // Strategy 1: Firebase ID Token
         try {
             const decodedFirebase = await admin.auth().verifyIdToken(token);
-            const user = await req.db.collection('users').findOne({ $or: [{ firebaseUid: decodedFirebase.uid }, { email: decodedFirebase.email }] });
+            const orConditions = [{ firebaseUid: decodedFirebase.uid }];
+            if (decodedFirebase.email) orConditions.push({ email: decodedFirebase.email });
+            if (decodedFirebase.phone_number) orConditions.push({ phone: decodedFirebase.phone_number });
+            const user = await req.db.collection('users').findOne({ $or: orConditions });
             if (!user) {
                 return res.status(404).json({ message: "User not found" });
             }
@@ -484,7 +495,10 @@ router.post('/fcm-token', async (req, res) => {
         } catch {
             try {
                 const decodedFirebase = await admin.auth().verifyIdToken(tokenHeader);
-                const user = await req.db.collection('users').findOne({ $or: [{ firebaseUid: decodedFirebase.uid }, { email: decodedFirebase.email }] });
+                const orConditions = [{ firebaseUid: decodedFirebase.uid }];
+                if (decodedFirebase.email) orConditions.push({ email: decodedFirebase.email });
+                if (decodedFirebase.phone_number) orConditions.push({ phone: decodedFirebase.phone_number });
+                const user = await req.db.collection('users').findOne({ $or: orConditions });
                 if (!user) return res.status(404).json({ message: "User not found" });
                 userId = user._id;
             } catch {
@@ -523,7 +537,10 @@ router.post('/change-password', async (req, res) => {
             // If JWT fails, try Firebase Token (for consistency, though usually app sends JWT for these ops)
             try {
                 const decodedFirebase = await admin.auth().verifyIdToken(token);
-                const user = await req.db.collection('users').findOne({ $or: [{ firebaseUid: decodedFirebase.uid }, { email: decodedFirebase.email }] });
+                const orConditions = [{ firebaseUid: decodedFirebase.uid }];
+                if (decodedFirebase.email) orConditions.push({ email: decodedFirebase.email });
+                if (decodedFirebase.phone_number) orConditions.push({ phone: decodedFirebase.phone_number });
+                const user = await req.db.collection('users').findOne({ $or: orConditions });
                 if (!user) return res.status(404).json({ message: "User not found" });
                 userId = user._id;
             } catch (firebaseError) {
