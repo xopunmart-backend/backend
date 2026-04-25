@@ -271,9 +271,17 @@ router.post('/firebase-login', async (req, res) => {
             }
         }
 
-        // 3. Return User Data (The App will strictly use Firebase User for its session, but needs Mongo ID for business logic)
+        // 3. Generate Long-lived JWT Token
+        const token = jwt.sign(
+            { id: user._id, email: user.email, role: user.role },
+            JWT_SECRET,
+            { expiresIn: '365d' }
+        );
+
+        // 4. Return User Data
         res.json({
             success: true,
+            token, // Send JWT token for session management
             user: {
                 id: user._id,
                 email: user.email,
