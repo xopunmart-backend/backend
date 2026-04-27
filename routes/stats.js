@@ -96,7 +96,7 @@ router.get('/dashboard', async (req, res) => {
 
         orders.forEach(order => {
             const status = order.status || 'pending';
-            const amount = parseFloat(order.totalAmount || 0);
+            const amount = parseFloat(order.itemsTotal || order.totalAmount || 0);
 
             // Date parsing
             // Date parsing
@@ -227,7 +227,7 @@ router.get('/dashboard', async (req, res) => {
                 if (!vendorRevenueMap[vId]) {
                     vendorRevenueMap[vId] = { totalRevenue: 0, orderCount: 0, id: vId };
                 }
-                const amt = parseFloat(o.totalAmount);
+                const amt = parseFloat(o.itemsTotal || o.totalAmount || 0);
                 vendorRevenueMap[vId].totalRevenue += (isNaN(amt) ? 0 : amt);
                 vendorRevenueMap[vId].orderCount++;
             }

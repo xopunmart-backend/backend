@@ -30,7 +30,7 @@ router.get('/', async (req, res) => {
                 }
                 vendorStats[vId].totalOrders++;
                 if (data.status !== 'cancelled') {
-                    vendorStats[vId].totalSales += (data.totalAmount || 0);
+                vendorStats[vId].totalSales += (data.itemsTotal || data.totalAmount || 0);
                 }
             }
         });
@@ -91,7 +91,7 @@ router.get('/:id', async (req, res) => {
                 totalOrders++;
 
                 if (data.status !== 'cancelled') {
-                    totalSales += (data.totalAmount || 0);
+                    totalSales += (data.itemsTotal || data.totalAmount || 0);
                 }
 
                 if (data.status === 'pending') {
