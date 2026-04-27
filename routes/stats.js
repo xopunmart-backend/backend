@@ -96,7 +96,7 @@ router.get('/dashboard', async (req, res) => {
 
         orders.forEach(order => {
             const status = order.status || 'pending';
-            const amount = parseFloat(order.itemsTotal || order.totalAmount || 0);
+            const amount = parseFloat(order.totalAmount || 0);
 
             // Date parsing
             // Date parsing
