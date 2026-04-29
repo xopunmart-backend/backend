@@ -422,4 +422,48 @@ router.get('/:id/analytics', async (req, res) => {
     }
 });
 
+// DELETE /api/riders/:id
+router.delete('/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (!ObjectId.isValid(id)) {
+            return res.status(400).json({ message: "Invalid Rider ID" });
+        }
+
+        // 1. Find rider to get firebaseUid 
+        const rider = await req.db.collection('users').findOne({ _id: new ObjectId(id) });
+        if (!rider) {
+            return res.status(404).json({ message: "Rider not found" });
+        }
+
+        const firebaseUid = rider.firebaseUid;
+
+        // 2. Delete from MongoDB
+        const result = await req.db.collection('users').deleteOne({ _id: new ObjectId(id) });
+
+        // 3. Delete from Firestore if exists
+        if (firebaseUid) {
+            try {
+                await admin.firestore().collection('users').doc(firebaseUid).delete();
+                // Optionally delete from Firebase Auth too
+                await admin.auth().deleteUser(firebaseUid);
+            } catch (e) {
+                console.error("Firestore/Auth Cleanup Error during Rider Deletion:", e);
+                // We don't fail the whole request because Mongo delete succeeded
+            }
+        }
+
+        if (result.deletedCount === 0) {
+            return res.status(404).json({ message: "Rider not found" });
+        }
+
+        res.json({ message: "Rider deleted successfully" });
+    } catch (error) {
+        console.error("Delete Rider Error:", error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
 module.exports = router;
+

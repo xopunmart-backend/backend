@@ -102,4 +102,48 @@ router.get('/:id', async (req, res) => {
     }
 });
 
+// PATCH /api/users/:id (Profile Update)
+router.patch('/:id', async (req, res) => {
+    try {
+        const db = req.db;
+        const userId = req.params.id;
+        const updates = req.body;
+
+        if (!ObjectId.isValid(userId)) {
+            return res.status(400).json({ message: "Invalid user ID" });
+        }
+
+        // Filter updates to allow only specific fields
+        const allowedUpdates = ['name', 'email', 'profileImage', 'phoneNumber'];
+        const filteredUpdates = {};
+        Object.keys(updates).forEach(key => {
+            if (allowedUpdates.includes(key)) {
+                filteredUpdates[key] = updates[key];
+            }
+        });
+
+        if (Object.keys(filteredUpdates).length === 0) {
+            return res.status(400).json({ message: "No valid updates provided" });
+        }
+
+        filteredUpdates.updatedAt = new Date();
+
+        const result = await db.collection('users').findOneAndUpdate(
+            { _id: new ObjectId(userId) },
+            { $set: filteredUpdates },
+            { returnDocument: 'after', projection: { password: 0 } }
+        );
+
+        if (!result) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        res.json({ message: "Profile updated successfully", user: result });
+    } catch (error) {
+        console.error("Error updating profile:", error);
+        res.status(500).json({ message: "Failed to update profile" });
+    }
+});
+
 module.exports = router;
+
