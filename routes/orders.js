@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { ObjectId } = require('mongodb');
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 const admin = require('../firebase');
 const { authenticateToken } = require('../middleware/auth');
 const { assignOrderToNearestRider, assignOrderBatchToNearestRider } = require('../utils/orderAssignment');
@@ -157,7 +157,7 @@ router.post('/', async (req, res) => {
         let isFirstOrderProcessed = false;
 
         const isMultiVendor = vendorCount > 1;
-        const groupId = isMultiVendor ? uuidv4() : null;
+        const groupId = isMultiVendor ? crypto.randomUUID() : null;
 
         // Collect data for batch assignment
         const batchOrdersForAssignment = [];
