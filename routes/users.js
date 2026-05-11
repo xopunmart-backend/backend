@@ -7,9 +7,8 @@ const admin = require('../firebase');
 router.get('/', async (req, res) => {
     try {
         const db = req.db;
-        // Assuming your users collection is named 'users' and role 'user' identifies customers
-        // You might need to adjust the query based on your actual schema (e.g., 'customers' collection)
-        const users = await db.collection('users').find({ role: 'user' }).toArray();
+        // Fetch both 'user' (email signup) and 'customer' (phone auth) roles
+        const users = await db.collection('users').find({ role: { $in: ['user', 'customer'] } }).toArray();
         res.json(users);
     } catch (error) {
         console.error("Error fetching users:", error);
