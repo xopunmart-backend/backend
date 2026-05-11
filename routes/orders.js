@@ -397,11 +397,19 @@ router.get('/recent', authenticateToken, async (req, res) => {
 
         const snapshot = await admin.firestore().collection('orders')
             .where('vendorId', '==', vendorId)
-            .orderBy('createdAt', 'desc')
-            .limit(5)
             .get();
 
-        const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        let orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        // Sort in JS memory to avoid composite index requirement
+        orders.sort((a, b) => {
+            const dateA = a.createdAt && a.createdAt._seconds ? new Date(a.createdAt._seconds * 1000) : new Date(0);
+            const dateB = b.createdAt && b.createdAt._seconds ? new Date(b.createdAt._seconds * 1000) : new Date(0);
+            return dateB - dateA;
+        });
+        
+        // Enforce limit locally
+        orders = orders.slice(0, 5);
         res.json(orders);
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -580,8 +588,15 @@ router.get('/available', async (req, res) => {
             .where('status', 'in', ['pending', 'preparing', 'ready', 'requesting_rider']);
         // .where('riderId', '==', null); // REMOVED: Excludes riderId="" which happens often
 
-        const snapshot = await query.orderBy('createdAt', 'desc').get();
+        const snapshot = await query.get();
         let orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        // Sort in memory to avoid composite index
+        orders.sort((a, b) => {
+            const dateA = a.createdAt && a.createdAt._seconds ? new Date(a.createdAt._seconds * 1000) : new Date(0);
+            const dateB = b.createdAt && b.createdAt._seconds ? new Date(b.createdAt._seconds * 1000) : new Date(0);
+            return dateB - dateA;
+        });
 
         // Strict JS Filter: Exclude if riderId is present and not empty string
         orders = orders.filter(o => {
