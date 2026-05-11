@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { ObjectId } = require('mongodb');
+const { v4: uuidv4 } = require('uuid');
 const admin = require('../firebase');
 const { authenticateToken } = require('../middleware/auth');
 const { assignOrderToNearestRider, assignOrderBatchToNearestRider } = require('../utils/orderAssignment');
@@ -360,12 +361,25 @@ router.get('/', async (req, res) => {
 router.get('/user/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
+        // No .orderBy() to avoid needing a Firestore composite index
         const snapshot = await admin.firestore().collection('orders')
             .where('userId', '==', userId)
-            .orderBy('createdAt', 'desc')
             .get();
 
         const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        // Sort in memory by createdAt descending
+        orders.sort((a, b) => {
+            const getTime = (val) => {
+                if (!val) return 0;
+                if (val._seconds) return val._seconds * 1000;
+                if (val.seconds) return val.seconds * 1000;
+                return new Date(val).getTime();
+            };
+            return getTime(b.createdAt) - getTime(a.createdAt);
+        });
+
+        console.log(`[Orders] Fetched ${orders.length} orders for userId=${userId}`);
         res.json(orders);
     } catch (error) {
         console.error("Get user orders error:", error);
