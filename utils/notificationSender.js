@@ -89,6 +89,15 @@ const sendToUser = async (db, userId, title, body, data = {}) => {
             data: {
                 ...Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])),
                 click_action: 'FLUTTER_NOTIFICATION_CLICK'
+            },
+            android: {
+                priority: "high",
+                notification: {
+                    channelId: "high_importance_channel",
+                    sound: "default",
+                    priority: "max",
+                    clickAction: "FLUTTER_NOTIFICATION_CLICK"
+                }
             }
         });
 
@@ -121,6 +130,15 @@ const sendToTopic = async (topic, title, body, data = {}) => {
             data: {
                 ...data,
                 click_action: 'FLUTTER_NOTIFICATION_CLICK'
+            },
+            android: {
+                priority: "high",
+                notification: {
+                    channelId: "admin_notifications",
+                    sound: "default",
+                    priority: "max",
+                    clickAction: "FLUTTER_NOTIFICATION_CLICK"
+                }
             }
         });
         console.log(`Notification sent to topic ${topic}: ${title}`);

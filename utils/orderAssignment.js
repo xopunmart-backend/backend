@@ -61,17 +61,19 @@ async function assignOrderToNearestRider(db, orderId, vendorLocation, excludedRi
         // 4. Send FCM notification to ALL found riders
         for (const rider of validRiders) {
             try {
-                let riderToken = null;
+                let riderToken = rider.fcmToken || null;
                 const rId = rider.firebaseUid || rider._id.toString();
 
-                // Rider App saves to 'riders' collection in Firestore
-                const riderDoc = await admin.firestore().collection('riders').doc(rId).get();
-                if (riderDoc.exists) {
-                    riderToken = riderDoc.data().fcmToken;
-                } else {
-                    // Fallback to 'users' collection 
-                    const userDoc = await admin.firestore().collection('users').doc(rId).get();
-                    if (userDoc.exists) riderToken = userDoc.data().fcmToken;
+                if (!riderToken) {
+                    // Rider App saves to 'riders' collection in Firestore
+                    const riderDoc = await admin.firestore().collection('riders').doc(rId).get();
+                    if (riderDoc.exists) {
+                        riderToken = riderDoc.data().fcmToken;
+                    } else {
+                        // Fallback to 'users' collection 
+                        const userDoc = await admin.firestore().collection('users').doc(rId).get();
+                        if (userDoc.exists) riderToken = userDoc.data().fcmToken;
+                    }
                 }
 
                 if (riderToken) {
@@ -81,8 +83,18 @@ async function assignOrderToNearestRider(db, orderId, vendorLocation, excludedRi
                             body: "A new order is available for pickup."
                         },
                         data: {
-                            type: "order_assigned", // Using same type for now to trigger refresh
-                            orderId: orderId.toString()
+                            type: "order_assigned",
+                            orderId: orderId.toString(),
+                            click_action: 'FLUTTER_NOTIFICATION_CLICK'
+                        },
+                        android: {
+                            priority: "high",
+                            notification: {
+                                channelId: "rider_high_importance",
+                                sound: "default",
+                                priority: "max",
+                                clickAction: "FLUTTER_NOTIFICATION_CLICK"
+                            }
                         },
                         token: riderToken
                     };
@@ -151,14 +163,16 @@ async function assignOrderBatchToNearestRider(db, groupId, batchOrders, excluded
         // 3. Send Notification to ALL found riders
         for (const rider of validRiders) {
             try {
-                let riderToken = null;
+                let riderToken = rider.fcmToken || null;
                 const rId = rider.firebaseUid || rider._id.toString();
 
-                const riderDoc = await admin.firestore().collection('riders').doc(rId).get();
-                if (riderDoc.exists) riderToken = riderDoc.data().fcmToken;
-                else {
-                    const userDoc = await admin.firestore().collection('users').doc(rId).get();
-                    if (userDoc.exists) riderToken = userDoc.data().fcmToken;
+                if (!riderToken) {
+                    const riderDoc = await admin.firestore().collection('riders').doc(rId).get();
+                    if (riderDoc.exists) riderToken = riderDoc.data().fcmToken;
+                    else {
+                        const userDoc = await admin.firestore().collection('users').doc(rId).get();
+                        if (userDoc.exists) riderToken = userDoc.data().fcmToken;
+                    }
                 }
 
                 if (riderToken) {
@@ -169,7 +183,17 @@ async function assignOrderBatchToNearestRider(db, groupId, batchOrders, excluded
                         },
                         data: {
                             type: "order_assigned",
-                            batchId: groupId
+                            batchId: groupId,
+                            click_action: 'FLUTTER_NOTIFICATION_CLICK'
+                        },
+                        android: {
+                            priority: "high",
+                            notification: {
+                                channelId: "rider_high_importance",
+                                sound: "default",
+                                priority: "max",
+                                clickAction: "FLUTTER_NOTIFICATION_CLICK"
+                            }
                         },
                         token: riderToken
                     });
