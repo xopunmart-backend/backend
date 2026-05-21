@@ -110,7 +110,7 @@ router.post('/', async (req, res) => {
                     // Customer & Address Info (Denormalized)
                     address: address || {}, // Shipping Address Object
                     customerName: contactName || ((customer && customer.name) ? customer.name : 'Unknown'),
-                    customerPhone: contactPhone || ((customer && customer.phone || customer.phoneNumber)) ? (customer.phone || customer.phoneNumber) : '',
+                    customerPhone: contactPhone || (customer && (customer.phone || customer.phoneNumber)) || '',
                     customerImage: (customer && customer.profileImage) ? customer.profileImage : null,
                     customerLocation: location || null, // Lat/Lng
 
