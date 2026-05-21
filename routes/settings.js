@@ -21,6 +21,7 @@ router.get('/', async (req, res) => {
                 handlingFee: 5,
                 deliveryCharge: 20,
                 freeDeliveryThreshold: 500,
+                minOrderAmount: 100,
                 freeDeliveryFirstXOrders: 0,
                 baseDeliveryFee: 40, // Legacy fallback
                 riderEarning: 15, // Default base rider earning
