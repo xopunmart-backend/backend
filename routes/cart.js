@@ -44,7 +44,8 @@ router.get('/:userId', async (req, res) => {
                     image: product.image,
                     quantity: item.quantity,
                     unit: product.unit,
-                    vendorId: product.vendorId
+                    vendorId: product.vendorId,
+                    category: product.category
                 });
             }
         }
