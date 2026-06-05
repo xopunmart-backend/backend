@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const admin = require('../firebase');
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 
 // POST /api/upload
 router.post('/', async (req, res) => {
@@ -28,11 +28,11 @@ router.post('/', async (req, res) => {
         }
         
         const buffer = Buffer.from(base64Data, 'base64');
-        const token = uuidv4();
+        const token = crypto.randomUUID();
         
         // Construct the file path inside the bucket
         const folderName = folder ? folder.trim().replace(/\/+$/, '') : 'xopunmart/general';
-        const fileName = `${folderName}/${uuidv4()}.${fileExtension}`;
+        const fileName = `${folderName}/${crypto.randomUUID()}.${fileExtension}`;
 
         const bucket = admin.storage().bucket();
         const file = bucket.file(fileName);
