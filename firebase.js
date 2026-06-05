@@ -7,7 +7,8 @@ try {
     // Option 1: Use service account file if it exists
     const serviceAccount = require('./serviceAccountKey.json');
     admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
+        credential: admin.credential.cert(serviceAccount),
+        storageBucket: 'traj-backend.firebasestorage.app'
     });
     admin.firestore().settings({ ignoreUndefinedProperties: true });
     console.log("Firebase Admin initialized with serviceAccountKey.json");
@@ -15,7 +16,8 @@ try {
     // Option 2: Fallback to GOOGLE_APPLICATION_CREDENTIALS or default env vars
     if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
         admin.initializeApp({
-            credential: admin.credential.applicationDefault()
+            credential: admin.credential.applicationDefault(),
+            storageBucket: 'traj-backend.firebasestorage.app'
         });
         admin.firestore().settings({ ignoreUndefinedProperties: true });
         console.log("Firebase Admin initialized with GOOGLE_APPLICATION_CREDENTIALS");
